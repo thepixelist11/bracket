@@ -22,7 +22,7 @@ export class BracketEnvironment {
 
     get label_raw() { return this.__label; }
     get label_chained(): string { return this.__parent ? `${this.__parent.label_chained}:${this.label_raw}` : this.label_raw };
-    get label() { return `<${this.label_chained}>`; }
+    get label() { return `${this.label_chained}`; }
     get bindings() { return this.__bindings; }
     get parent() { return this.__parent; }
     get builtins() { return this.__builtins; }

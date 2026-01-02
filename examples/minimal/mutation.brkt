@@ -1,0 +1,6 @@
+(define counter 0)
+
+(set! counter (add1 counter))
+(set! counter (add1 counter))
+
+counter

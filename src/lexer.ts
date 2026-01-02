@@ -1,4 +1,4 @@
-import { CHAR_TOK_MAP, PartialExitCode, ErrorTokenLiteral, BOOL_FALSE, BOOL_TRUE } from "./globals.js";
+import { CHAR_TOK_MAP, PartialExitCode, ErrorTokenLiteral, BOOL_FALSE, BOOL_TRUE, RPAREN_TYPE_MAP, PAREN_TYPE_MAP } from "./globals.js";
 import { Token, TokenEOF, TokenChar, TokenType, TokenError, TokenSym, TokenNum, TokenStr, TokenIdent } from "./token.js";
 
 export class Lexer {
@@ -29,24 +29,26 @@ export class Lexer {
         let toks: Token[] = [];
         while (this.cur) {
             if (CHAR_TOK_MAP[this.cur]) {
-                toks.push(new Token(CHAR_TOK_MAP[this.cur]!, this.cur, this.row, this.col));
+                toks.push(new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col }));
                 this.movePosition();
             } else if (Lexer.isQuote(this.cur)) {
                 const { result, code } = this.readStringTok();
 
-                if (code !== PartialExitCode.SUCCESS) return { code, result: toks };
+                if (code !== PartialExitCode.SUCCESS) return { code, result: [result] };
 
                 toks.push(result);
             } else if (this.cur === "'") {
-                const { result, code } = this.readSymbolTok();
+                const { result, code } = Lexer.isLParen(this.peek)
+                    ? this.readQuotedListTok()
+                    : this.readSymbolTok();
 
-                if (code !== PartialExitCode.SUCCESS) return { code, result: toks };
+                if (code !== PartialExitCode.SUCCESS) return { code, result: [result] };
 
                 toks.push(result);
             } else if (/\#\\./.test(this.peekNextNChars(3))) {
                 const { result, code } = this.readCharTok();
 
-                if (code !== PartialExitCode.SUCCESS) return { code, result: toks };
+                if (code !== PartialExitCode.SUCCESS) return { code, result: [result] };
 
                 toks.push(result);
             } else if (!Lexer.isWhitespace(this.cur)) {
@@ -55,7 +57,7 @@ export class Lexer {
                         ? this.readNumericTok()
                         : this.readIdentTok();
 
-                if (code !== PartialExitCode.SUCCESS) return { code, result: toks };
+                if (code !== PartialExitCode.SUCCESS) return { code, result: [result] };
 
                 toks.push(result);
             }
@@ -64,7 +66,7 @@ export class Lexer {
             this.skipComment();
         }
 
-        toks.push(TokenEOF(this.row, this.col));
+        toks.push(TokenEOF({ row: this.row, col: this.col }));
 
         return { result: toks, code: PartialExitCode.SUCCESS };
     }
@@ -105,7 +107,7 @@ export class Lexer {
             if (this.peek === ".") {
                 this.movePosition();
                 return {
-                    result: TokenError(ErrorTokenLiteral.INVALID_NEGATIVE_NUMERIC, row, col),
+                    result: TokenError(ErrorTokenLiteral.INVALID_NEGATIVE_NUMERIC, { row, col }),
                     code: PartialExitCode.ERROR
                 };
             }
@@ -118,7 +120,7 @@ export class Lexer {
             if (this.cur === ".") {
                 if (previous_dot) {
                     return {
-                        result: TokenError(ErrorTokenLiteral.NUMERIC_EXTRANEOUS_PERIODS, row, col),
+                        result: TokenError(ErrorTokenLiteral.NUMERIC_EXTRANEOUS_PERIODS, { row, col }),
                         code: PartialExitCode.ERROR
                     };
                 }
@@ -132,7 +134,82 @@ export class Lexer {
             this.movePosition();
         }
 
-        return { result: TokenNum(num, row, col), code: PartialExitCode.SUCCESS };
+        return { result: TokenNum(num, { row, col }), code: PartialExitCode.SUCCESS };
+    }
+
+    private readQuotedListTok(): { result: Token, code: PartialExitCode } {
+        const col = this.col;
+        const row = this.row;
+
+        this.movePosition();
+        this.skipWhitespace();
+
+        if (!Lexer.isLParen(this.cur)) {
+            return {
+                result: TokenError("expected a list following quote", { row, col }),
+                code: PartialExitCode.ERROR
+            }
+        }
+
+        const { result: list_token, code } = this.readListTok();
+        if (code !== PartialExitCode.SUCCESS) return { result: list_token, code };
+
+        const quoted_list_token = new Token(TokenType.QUOTE, "", { row, col }, list_token);
+        return { result: quoted_list_token, code: PartialExitCode.SUCCESS };
+    }
+
+    private readListTok(): { result: Token, code: PartialExitCode } {
+        const col = this.col;
+        const row = this.row;
+
+        if (!Lexer.isLParen(this.cur)) {
+            return { result: TokenError("expected opening parentheses", { row, col }), code: PartialExitCode.ERROR };
+        }
+
+        const elems: Token[] = [];
+        const open_char = this.cur;
+        const close_char = RPAREN_TYPE_MAP[PAREN_TYPE_MAP[open_char]];
+
+        this.movePosition();
+        this.skipWhitespace();
+
+        while (this.cur && this.cur !== close_char) {
+            let tok_result: { result: Token, code: PartialExitCode };
+
+            if (Lexer.isLParen(this.cur)) {
+                tok_result = this.readListTok();
+            } else if (Lexer.isQuote(this.cur)) {
+                tok_result = this.readStringTok();
+            } else if (this.cur === "'") {
+                tok_result = Lexer.isLParen(this.peek)
+                    ? this.readQuotedListTok()
+                    : this.readSymbolTok();
+            } else if (!Lexer.isWhitespace(this.cur)) {
+                tok_result = Lexer.isNumeric(this.cur) || this.cur === "-"
+                    ? this.readNumericTok()
+                    : this.readSymbolTok(true);
+            } else {
+                this.skipWhitespace();
+                continue;
+            }
+
+            if (tok_result.code !== PartialExitCode.SUCCESS)
+                return { result: tok_result.result, code: tok_result.code };
+
+            elems.push(tok_result.result);
+            this.skipWhitespace();
+        }
+
+        if (this.cur !== close_char) {
+            return { result: TokenError(`expected closing ${close_char}`, { row, col }), code: PartialExitCode.INCOMPLETE };
+        }
+
+        this.movePosition();
+
+        return {
+            result: new Token(TokenType.LIST, "", { row, col }, elems),
+            code: PartialExitCode.SUCCESS
+        }
     }
 
     private readStringEscapeSeq(): string {
@@ -278,7 +355,7 @@ export class Lexer {
 
             if (!this.peek) {
                 return {
-                    result: TokenError("Missing closing \"", row, col),
+                    result: TokenError("Missing closing \"", { row, col }),
                     code: PartialExitCode.INCOMPLETE
                 };
             }
@@ -289,7 +366,7 @@ export class Lexer {
         }
 
         return {
-            result: TokenStr(str, row, col),
+            result: TokenStr(str, { row, col }),
             code: PartialExitCode.SUCCESS
         };
     }
@@ -307,7 +384,7 @@ export class Lexer {
         ) {
             this.movePosition();
             return {
-                result: TokenError(ErrorTokenLiteral.INVALID_IDENT_NAME, row, col),
+                result: TokenError(ErrorTokenLiteral.INVALID_IDENT_NAME, { row, col }),
                 code: PartialExitCode.ERROR
             };
         }
@@ -324,28 +401,31 @@ export class Lexer {
 
         if (this.builtins.has(lit)) {
             const { type, literal } = this.builtins.get(lit)!;
-            return { result: new Token(type, literal, row, col), code: PartialExitCode.SUCCESS }
+            return { result: new Token(type, literal, { row, col }), code: PartialExitCode.SUCCESS }
         } else {
-            return { result: TokenIdent(lit, row, col), code: PartialExitCode.SUCCESS }
+            return { result: TokenIdent(lit, { row, col }), code: PartialExitCode.SUCCESS }
         }
     }
 
-    private readSymbolTok(): { result: Token, code: PartialExitCode } {
+    private readSymbolTok(allow_no_starting_quote = false): { result: Token, code: PartialExitCode } {
         let lit = "";
         const col = this.col;
         const row = this.row;
         let quoted = false;
 
-        // Any assertion to prevent overly specific type narrowing.
-        if ((this.cur as any) !== "'") {
-            return {
-                result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, row, col),
-                code: PartialExitCode.ERROR
-            };
-        }
 
-        this.movePosition();
-        this.skipWhitespace();
+        if (!allow_no_starting_quote) {
+            // Any assertion to prevent overly specific type narrowing.
+            if ((this.cur as any) !== "'") {
+                return {
+                    result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, { row, col }),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            this.movePosition();
+            this.skipWhitespace();
+        }
 
         // TODO: This does not allow for escaped pipes within quoted symbols.
         if (this.cur === "|") {
@@ -360,7 +440,7 @@ export class Lexer {
                 this.movePosition();
             } else {
                 return {
-                    result: TokenError(ErrorTokenLiteral.ILLEGAL_SYMBOL_HASH_START, row, col),
+                    result: TokenError(ErrorTokenLiteral.ILLEGAL_SYMBOL_HASH_START, { row, col }),
                     code: PartialExitCode.ERROR
                 };
             }
@@ -377,7 +457,7 @@ export class Lexer {
         if (quoted) {
             if (this.cur !== "|")
                 return {
-                    result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, row, col),
+                    result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, { row, col }),
                     code: PartialExitCode.ERROR
                 };
 
@@ -386,12 +466,12 @@ export class Lexer {
 
         if (lit === "." || lit === "") {
             return {
-                result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, row, col),
+                result: TokenError(ErrorTokenLiteral.INVALID_SYMBOL_LITERAL, { row, col }),
                 code: PartialExitCode.ERROR
             };
         }
 
-        return { result: TokenSym(lit, row, col), code: PartialExitCode.SUCCESS };
+        return { result: TokenSym(lit, { row, col }), code: PartialExitCode.SUCCESS };
     }
 
     private readCharTok(): { result: Token, code: PartialExitCode } {
@@ -424,7 +504,7 @@ export class Lexer {
 
         if (!/\#\\./.test(this.peekNextNChars(3)))
             return {
-                result: TokenError(ErrorTokenLiteral.INVALID_CHARACTER_LITERAL, row, col),
+                result: TokenError(ErrorTokenLiteral.INVALID_CHARACTER_LITERAL, { row, col }),
                 code: PartialExitCode.ERROR
             }
 
@@ -474,13 +554,15 @@ export class Lexer {
             }
         }
 
-        return { result: TokenChar(`${ch}`, row, col), code: PartialExitCode.SUCCESS };
+        return { result: TokenChar(`${ch}`, { row, col }), code: PartialExitCode.SUCCESS };
     }
 
     static isWhitespace(ch: string): boolean { return /\s/.test(ch); }
     static isNumeric(ch: string): boolean { return /[\d.]/.test(ch); }
     static isQuote(ch: string): boolean { return /["`]/.test(ch); }
     static isIllegalSymbolChar(ch: string, quoted: boolean = false): boolean { return (quoted ? /[|]/ : /[()[\]{}",'`;|\\\s]/).test(ch); }
+    static isLParen(ch: string): boolean { return /[(\[{]/.test(ch); }
+    static isRParen(ch: string): boolean { return /[)\]}]/.test(ch); }
 
     private readonly builtins = new Map<string, { type: TokenType, literal: string }>([
         ["#t", { type: TokenType.BOOL, literal: BOOL_TRUE }],

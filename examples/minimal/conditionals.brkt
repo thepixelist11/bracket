@@ -1,0 +1,5 @@
+(define n 7)
+
+(if (> n 0)
+    'positive
+    'non-positive)

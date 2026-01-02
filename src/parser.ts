@@ -1,32 +1,33 @@
-import { Token, TokenType, TokenIdent } from "./token.js";
-import { ParenType, PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./globals.js";
-import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError } from "./ast.js";
-import { Evaluator } from "./evaluator.js";
+import { Token, TokenType, TokenIdent, TokenList } from "./token.js";
+import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./globals.js";
+import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError, ASTProgram } from "./ast.js";
 
 export class Parser {
     private toks: Token[] = [];
     private idx: number = 0;
-    private paren_stack: ParenType[] = [];
 
     private get cur() { return this.toks[this.idx] ?? undefined; }
 
-    public parse(toks: Token[]): { result: ASTNode, code: PartialExitCode } {
+    public parse(toks: Token[], name?: string): { result: ASTProgram, code: PartialExitCode } {
         this.toks = toks;
         this.idx = 0;
 
-        const exprs: ASTNode[] = [];
+        const forms: ASTNode[] = [];
 
         while (this.cur && this.cur.type !== TokenType.EOF) {
             const expr = this.parseExpression();
-            if (expr.code !== PartialExitCode.SUCCESS) return expr;
-            exprs.push(expr.result);
+            if (expr.code !== PartialExitCode.SUCCESS) {
+                return {
+                    result: null as any,
+                    code: expr.code
+                };
+            }
+
+            forms.push(expr.result);
         }
 
         return {
-            result: new ASTSExprNode(
-                TokenIdent("begin"),
-                ...exprs
-            ),
+            result: new ASTProgram(forms, name),
             code: PartialExitCode.SUCCESS
         };
     }
@@ -40,17 +41,65 @@ export class Parser {
         }
 
         switch (this.cur.type) {
-            case TokenType.LPAREN:
+            case TokenType.LPAREN: {
                 return this.parseList();
-            case TokenType.ERROR:
+            }
+
+            case TokenType.ERROR: {
                 return {
                     result: ASTError(
                         this.cur.literal,
-                        this.cur.meta.row,
-                        this.cur.meta.col,
+                        this.cur.meta,
                     ),
                     code: PartialExitCode.ERROR,
                 }
+            }
+
+            case TokenType.QUOTE: {
+                const quote_tok = this.cur;
+                this.idx++;
+                const inner_tok = quote_tok.value as Token;
+
+                if (!inner_tok || inner_tok.type !== TokenType.LIST) {
+                    return {
+                        result: ASTError("quoted expression must be a list"),
+                        code: PartialExitCode.ERROR
+                    };
+                }
+
+                const meta = this.cur.meta;
+                const elems: Token[] = [];
+                for (const tok of inner_tok.value as Token[]) {
+                    const saved_toks = this.toks;
+                    const saved_idx = this.idx;
+
+                    this.toks = [tok];
+                    this.idx = 0;
+
+                    const { result, code } = this.parseExpression();
+                    if (code !== PartialExitCode.SUCCESS) {
+                        this.toks = saved_toks;
+                        this.idx = saved_idx;
+                        return { result, code };
+                    }
+
+                    if (!(result instanceof ASTLiteralNode)) {
+                        return {
+                            result: ASTError("expected a literal node"),
+                            code: PartialExitCode.ERROR
+                        };
+                    }
+
+                    elems.push(result.tok);
+
+                    this.toks = saved_toks;
+                    this.idx = saved_idx;
+                }
+
+                const list = new ASTLiteralNode(TokenList(elems, meta));
+                return { result: list, code: PartialExitCode.SUCCESS };
+            }
+
             default: {
                 const tok = this.cur;
                 this.idx++;
@@ -80,8 +129,7 @@ export class Parser {
                 return {
                     result: ASTError(
                         `unterminated list; missing ${RPAREN_TYPE_MAP[PAREN_TYPE_MAP[start.literal]]}`,
-                        start.meta.row,
-                        start.meta.col,
+                        start.meta,
                     ),
                     code: PartialExitCode.INCOMPLETE,
                 };
@@ -96,8 +144,7 @@ export class Parser {
         return {
             result: ASTError(
                 `unterminated list; missing ${RPAREN_TYPE_MAP[PAREN_TYPE_MAP[start.literal]]}`,
-                start.meta.row,
-                start.meta.col,
+                start.meta,
             ),
             code: PartialExitCode.INCOMPLETE,
         };

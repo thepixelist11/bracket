@@ -50,6 +50,10 @@ export class ASTProcedureNode implements ASTBase {
     }
 }
 
+export class ASTProgram {
+    constructor(public forms: ASTNode[], public name: string = "") { };
+}
+
 export type ASTNode = ASTLiteralNode | ASTSExprNode | ASTProcedureNode;
 
 
@@ -81,8 +85,8 @@ export function ASTChar(value: string): ASTLiteralNode {
     return new ASTLiteralNode(TokenChar(value));
 }
 
-export function ASTError(msg: string, row: number = -1, col: number = -1): ASTLiteralNode {
-    return new ASTLiteralNode(TokenError(msg, row, col));
+export function ASTError(msg: string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenError(msg, meta));
 }
 
 export function ASTCall(op: string, ...args: ASTNode[]): ASTSExprNode {

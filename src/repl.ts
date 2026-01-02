@@ -2,7 +2,7 @@ import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js";
 import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
-import { ASTLiteralNode, ASTNode, ASTSExprNode } from "./ast.js";
+import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, GOODBYE_MESSAGE, STDOUT } from "./globals.js";
 import { printDeep, Output } from "./utils.js";
@@ -122,8 +122,8 @@ export function REPL(use_hist = true) {
         env.stdout.reset();
     }
 
-    function evaluate(expr: string): { result: Token, code: PartialExitCode, ast: ASTNode } {
-        let ret: { result: Token, code: PartialExitCode, ast: ASTNode };
+    function evaluate(expr: string): { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram } {
+        let ret: { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram };
 
         try {
             const { result: toks, code: lex_code } = l.lex(expr);
@@ -149,9 +149,10 @@ export function REPL(use_hist = true) {
                 return ret;
             }
 
-            const value = e.evaluate(ast, env);
+            const value = e.evaluateProgram(ast, env, env.stdout, false);
 
             appendREPLHistory(expr.split("\n"));
+
             ret = { result: value, code: PartialExitCode.SUCCESS, ast };
         } catch (err) {
             ret = {

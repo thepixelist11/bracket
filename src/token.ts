@@ -5,18 +5,12 @@ import { ASTProcedureNode } from "./ast.js";
 export interface TokenMetadata { row: number, col: number }
 
 export class Token {
-    public meta: TokenMetadata = { row: -1, col: -1 };
-
     constructor(
         public type: TokenType,
         public literal: string,
-        row: number = -1,
-        col: number = -1,
-        public value?: unknown
-    ) {
-        this.meta.row = row;
-        this.meta.col = col;
-    }
+        public meta: TokenMetadata = { row: -1, col: -1 },
+        public value?: unknown,
+    ) { }
 
     private escapeString(str: string) {
         return str
@@ -35,7 +29,7 @@ export class Token {
         switch (this.type) {
             case TokenType.ERROR:
                 if (this.meta.row >= -1 && this.meta.col >= 0)
-                    return `#<error:${this.literal} at ${this.meta.row}:${this.meta.col}>`;
+                    return `#<error:${this.literal} at ${this.meta.row + 1}:${this.meta.col + 1}>`;
                 else
                     return `#<error:${this.literal}>`;
             case TokenType.EOF:
@@ -67,11 +61,13 @@ export class Token {
                 return `'(${(this.value as Token[] ?? []).map(t => t.toString()).join(" ")})`; // FIXME: Prevent nested lists from having '
             case TokenType.ANY:
                 return `<any>`
+            case TokenType.QUOTE:
+                return `<quote>`
         }
     }
 
     withPos(row: number, col: number) {
-        return new Token(this.type, this.literal, row, col, this.value);
+        return new Token(this.type, this.literal, { ...this.meta, row, col }, this.value);
     }
 }
 
@@ -90,21 +86,22 @@ export const enum TokenType {
     CHAR,
     PROCEDURE,
     LIST,
+    QUOTE,
 };
 
-export function TokenError(msg: string, row: number = -1, col: number = -1) { return new Token(TokenType.ERROR, msg, row, col) };
-export function TokenEOF(row: number = -1, col: number = -1) { return new Token(TokenType.EOF, EOF_CHAR, row, col) };
-export function TokenVoid(row: number = -1, col: number = -1) { return new Token(TokenType.VOID, "", row, col) };
-export function TokenLParen(type: ParenType = ParenType.PAREN, row: number = -1, col: number = -1) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], row, col) };
-export function TokenRParen(type: ParenType = ParenType.PAREN, row: number = -1, col: number = -1) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], row, col) };
-export function TokenNum(num: number | string, row: number = -1, col: number = -1) { return new Token(TokenType.NUM, num.toString(), row, col) };
-export function TokenSym(sym: string, row: number = -1, col: number = -1) { return new Token(TokenType.SYM, sym.toString(), row, col) };
-export function TokenBool(bool: boolean, row: number = -1, col: number = -1) { return new Token(TokenType.BOOL, bool ? BOOL_TRUE : BOOL_FALSE, row, col) };
-export function TokenStr(str: string, row: number = -1, col: number = -1) { return new Token(TokenType.STR, str, row, col) };
-export function TokenIdent(ident: string, row: number = -1, col: number = -1) { return new Token(TokenType.IDENT, ident, row, col) };
-export function TokenChar(char: string, row: number = -1, col: number = -1) { return new Token(TokenType.CHAR, char, row, col) };
-export function TokenProc(proc: ASTProcedureNode, row: number = -1, col: number = -1) { return new Token(TokenType.PROCEDURE, "", row, col, proc) };
-export function TokenList(list: Token[], row: number = -1, col: number = -1) { return new Token(TokenType.LIST, "", row, col, list) };
+export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, meta) };
+export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenType.EOF, EOF_CHAR, meta) };
+export function TokenVoid(meta?: TokenMetadata) { return new Token(TokenType.VOID, "", meta) };
+export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], meta) };
+export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], meta) };
+export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), meta) };
+export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), meta) };
+export function TokenBool(bool: boolean, meta?: TokenMetadata) { return new Token(TokenType.BOOL, bool ? BOOL_TRUE : BOOL_FALSE, meta) };
+export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, meta) };
+export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, meta) };
+export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, meta) };
+export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", meta, proc) };
+export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", meta, list) };
 
 export type ValueType =
     | TokenType.ANY

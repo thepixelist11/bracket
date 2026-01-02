@@ -202,6 +202,34 @@ export const STDLIB = new Map<string, BuiltinFunction>([
             );
         },
     }],
+    ["local", {
+        macro: true,
+        variadic: true,
+        min_args: 2,
+        expander: (args: ASTNode[]): ASTNode => {
+            if (!(args[0] instanceof ASTSExprNode))
+                throw new Error(`local: bad syntax; not a definition sequence`);
+
+            const definitions = args[0].elements;
+            const bodies = args.slice(1);
+
+            if (definitions.some(d => {
+                return !(
+                    d instanceof ASTSExprNode &&
+                    d.first instanceof ASTLiteralNode &&
+                    d.first.tok.literal === "define"
+                )
+            })) {
+                throw new Error(`local: not a definition`);
+            }
+
+            return new ASTSExprNode(
+                ASTIdent("begin"),
+                ...definitions,
+                ...bodies
+            );
+        }
+    }],
     ["let", {
         macro: true,
         variadic: true,
@@ -254,6 +282,17 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         pure: false,
         env_param: true
     }],
+    ["println", {
+        fn: (env, val) => {
+            env.stdout.write(val.toString() + "\n");
+        },
+        min_args: 1,
+        arg_type: [TokenType.ANY],
+        ret_type: TokenType.VOID,
+        raw: ["token"],
+        pure: false,
+        env_param: true
+    }],
     ["display", { // FIXME: Chars and strings should print literally. Do not print unprintable characters
         fn: (env, val) => {
             if (
@@ -272,6 +311,32 @@ export const STDLIB = new Map<string, BuiltinFunction>([
             }
 
             env.stdout.write(toDisplay(val));
+        },
+        min_args: 1,
+        arg_type: [TokenType.ANY],
+        ret_type: TokenType.VOID,
+        raw: ["token"],
+        pure: false,
+        env_param: true
+    }],
+    ["displayln", {
+        fn: (env, val) => {
+            if (
+                val.literal.length === 0 &&
+                (val.type === TokenType.STR || val.type === TokenType.SYM)
+            ) return;
+
+            function toDisplay(tok: Token): string {
+                if (tok.type === TokenType.PROCEDURE) {
+                    return `#<procedure:${val.literal.toString()}>`;
+                } else if (tok.type === TokenType.LIST) {
+                    return `(${(tok.value as Token[]).map(t => toDisplay(t)).join(" ")})`;
+                } else {
+                    return tok.literal.toString();
+                }
+            }
+
+            env.stdout.write(toDisplay(val) + "\n");
         },
         min_args: 1,
         arg_type: [TokenType.ANY],
@@ -696,9 +761,12 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment): Token {
         const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.literal);
 
         const procedure = new ASTProcedureNode(name, params, body_nodes, env);
-        procedure.closure.define(name, procedure);
+        const proc_token = TokenProc(procedure);
+        const proc_literal = new ASTLiteralNode(proc_token);
 
-        env.define(name, procedure);
+        procedure.closure.define(name, proc_literal);
+
+        env.define(name, proc_literal);
     }
 
     return ASTVoid().tok;
@@ -730,5 +798,5 @@ function evalLambda(args: ASTNode[], env: BracketEnvironment): Token {
         env,
     );
 
-    return TokenProc(proc, params_node.meta?.row, params_node.meta?.col);
+    return TokenProc(proc, params_node.meta);
 }

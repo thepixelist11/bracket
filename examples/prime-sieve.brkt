@@ -1,0 +1,10 @@
+(define (primes-up-to n)
+  (define numbers (build-list (- n 1) (lambda (i) (+ i 2))))
+  (define (sieve lst)
+    (if (empty? lst)
+        empty
+        (let ((p (car lst)))
+          (cons p (sieve (filter (lambda (x) (not (= 0 (remainder x p)))) (cdr lst)))))))
+  (sieve numbers))
+
+(println (primes-up-to 30))

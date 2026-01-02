@@ -4,7 +4,7 @@ import { Output } from "./utils.js";
 import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js"
 import { Evaluator } from "./evaluator.js";
-import { TokenType } from "./token.js";
+import { TokenError, TokenType } from "./token.js";
 import fs from "fs";
 import path from "path";
 
@@ -16,8 +16,10 @@ export function runFile(filepath: string, env?: BracketEnvironment) {
     if (!fs.existsSync(fp) || !fs.statSync(fp).isFile())
         throw new Error(`${fp} does not exist or is not a file`);
 
+    const rel_fp = path.relative(".", fp);
+
     const env_stdout = new Output();
-    if (!env) env = new BracketEnvironment(path.relative(fp, "."), undefined, env_stdout);
+    if (!env) env = new BracketEnvironment(rel_fp, undefined, env_stdout);
 
     const contents = fs.readFileSync(fp, "utf8");
 
@@ -25,20 +27,23 @@ export function runFile(filepath: string, env?: BracketEnvironment) {
     const p = new Parser();
     const e = new Evaluator();
 
-    const { result: toks, code: lex_code } = l.lex(contents);
-    if (lex_code !== PartialExitCode.SUCCESS) throw new Error(`lexer error`); // FIXME: error handling
+    try {
+        const { result: toks, code: lex_code } = l.lex(contents);
+        if (lex_code !== PartialExitCode.SUCCESS)
+            throw new Error(`lexer error${toks[0] && toks[0].type === TokenType.ERROR
+                ? ": " + toks[0].literal
+                : ""}`);
 
-    const { result: ast, code: parse_code } = p.parse(toks);
-    if (parse_code !== PartialExitCode.SUCCESS) throw new Error(`parser error`);
+        const { result: ast, code: parse_code } = p.parse(toks, rel_fp);
+        if (parse_code !== PartialExitCode.SUCCESS) throw new Error(`parser error`);
 
-    const result = e.evaluate(ast, env);
+        e.evaluateProgram(ast, env);
 
-    STDOUT.write(env.stdout.buffer);
-    env.stdout.reset()
-
-    if (result.type !== TokenType.EOF && result.type !== TokenType.VOID) {
-        STDOUT.write(result.toString());
+        STDOUT.write(env.stdout.buffer);
+    } catch (err) {
+        const err_tok = TokenError(`${env.label} ${((err as any).message ?? String(err))}`);
+        STDOUT.write(err_tok.toString() + "\n");
     }
 
-    STDOUT.write("\n");
+    env.stdout.reset()
 }

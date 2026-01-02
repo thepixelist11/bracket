@@ -1,0 +1,7 @@
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(for-each (lambda (i) (println (fib i))) (build-list 10 add1))

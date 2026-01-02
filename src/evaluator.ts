@@ -1,6 +1,6 @@
-import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTVoid } from "./ast.js";
-import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList } from "./token.js";
-import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, BOOL_FALSE } from "./globals.js";
+import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTVoid, ASTProgram } from "./ast.js";
+import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata } from "./token.js";
+import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, BOOL_FALSE, STDOUT } from "./globals.js";
 import { BracketEnvironment } from "./env.js";
 
 export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
@@ -38,6 +38,26 @@ export class Evaluator {
         const real_env = env ?? new BracketEnvironment(TEMP_ENVIRONMENT_LABEL);
         const expanded = Evaluator.expand(ast, real_env);
         return Evaluator.evalExpanded(expanded, real_env);
+    }
+
+    evaluateProgram(program: ASTProgram, env?: BracketEnvironment, stdout = STDOUT, print_intermediate = true): Token {
+        if (!env) env = new BracketEnvironment(program.name, undefined, stdout);
+
+        let last = TokenVoid();
+
+        for (const form of program.forms) {
+            const result = this.evaluate(form, env);
+            if (result.type !== TokenType.EOF && result.type !== TokenType.VOID) {
+                last = result;
+
+                if (print_intermediate) {
+                    stdout.write(result.toString());
+                    stdout.write("\n");
+                }
+            }
+        }
+
+        return last;
     }
 
     static evalExpanded(ast: ASTNode, env: BracketEnvironment) {
@@ -112,64 +132,26 @@ export class Evaluator {
             if (argument_error) return argument_error;
 
             try {
-                const result = Evaluator.callBuiltin(env, op.literal, args, op.meta.row, op.meta.col);
+                const result = Evaluator.callBuiltin(env, op.literal, args, op.meta);
                 return result;
             } catch (err) {
                 const msg = (err as any).message ?? String(err);
-                // console.log(env.label, msg);
-                return TokenError(msg, op.meta.row, op.meta.col);
+                return TokenError(msg, op.meta);
             }
         }
 
         const proc = Evaluator.procedureToJS(op, env);
 
-        // let fn: ASTProcedureNode;
-        //
-        // if (op.type === TokenType.PROCEDURE) {
-        //     fn = op.value as ASTProcedureNode;
-        // } else if (op.type === TokenType.IDENT) {
-        //     if (!env.has(op.literal))
-        //         throw new Error(`${op.literal}: undefined; cannot reference an identifier before its definition`);
-        //
-        //     const bound = env.get(op.literal)!;
-        //     if (bound instanceof ASTProcedureNode) {
-        //         fn = bound;
-        //     } else if (bound instanceof ASTLiteralNode && bound.tok.type === TokenType.PROCEDURE) {
-        //         if (!(bound.tok.value instanceof ASTProcedureNode))
-        //             throw new Error(`malformed Procedure token.`);
-        //         fn = bound.tok.value as ASTProcedureNode;
-        //     } else {
-        //         throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
-        //     }
-        // } else {
-        //     throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
-        // }
-
         const args = node.rest.map(e =>
             Evaluator.evalExpanded(e, env));
-
-        // // TODO: Allow for more extensibility with variadic user-defined functions.
-        // if (args.length !== fn.params.length)
-        //     throw new Error(`arity mismatch: expected ${fn.params.length} arguments, got ${args.length} arguments`);
-        //
-        // const closure = new BracketEnvironment(op.literal, fn.closure);
-        // for (let i = 0; i < args.length; i++) {
-        //     closure.define(fn.params[i], new ASTLiteralNode(args[i]));
-        // }
-        //
-        // let result = Evaluator.Void().tok;
-        //
-        // for (const expr of fn.body) {
-        //     result = Evaluator.evalExpanded(expr, closure);
-        //     if (result.type === TokenType.ERROR)
-        //         return result;
-        // }
 
         return proc(...args);
     }
 
     static expand(ast: ASTNode, env: BracketEnvironment): ASTNode {
-        if (ast instanceof ASTLiteralNode || ast instanceof ASTProcedureNode) return ast;
+        if (ast instanceof ASTLiteralNode) return ast;
+
+        if (ast instanceof ASTProcedureNode) { throw new Error("procedure node appeared during macro expansion"); }
 
         if (ast.elements.length === 0)
             return ast;
@@ -202,12 +184,12 @@ export class Evaluator {
         return new ASTSExprNode(expanded_op, ...expanded_args);
     }
 
-    static callBuiltin(env: BracketEnvironment, fn_name: string, args: Token[], row: number = -1, col: number = -1): Token {
+    static callBuiltin(env: BracketEnvironment, fn_name: string, args: Token[], meta: TokenMetadata): Token {
         if (!env.builtins.has(fn_name)) throw new Error(`${fn_name}: this function is not defined`);
 
         const builtin = env.builtins.get(fn_name)!;
 
-        if (builtin.constant) return builtin.value.withPos(row, col);
+        if (builtin.constant) return builtin.value.withPos(meta.row, meta.col);
 
         if (builtin.special) throw new Error(`${fn_name}: bad syntax`);
 
@@ -261,66 +243,54 @@ export class Evaluator {
         }
 
         if (builtin.ret_type === TokenType.VOID)
-            return TokenVoid(row, col);
+            return TokenVoid(meta);
 
         if (builtin.ret_type === TokenType.LIST) {
             if (!Array.isArray(result))
                 throw new Error(`Unexpected return type. Expected ${TOKEN_PRINT_TYPE_MAP[TokenType.LIST]}, got ${JS_PRINT_TYPE_MAP[typeof result]} (${result})`);
 
-            return TokenList(result, row, col);
+            return TokenList(result, meta);
         }
 
         if (typeof result !== VALUE_TYPE_JS_TYPE_MAP[builtin.ret_type])
             throw new Error(`Unexpected return type. Expected ${TOKEN_PRINT_TYPE_MAP[builtin.ret_type]}, got ${JS_PRINT_TYPE_MAP[typeof result]} (${result})`)
 
-        return new Token(builtin.ret_type, RETURN_TYPE_COERCION[builtin.ret_type](result), row, col);
+        return new Token(builtin.ret_type, RETURN_TYPE_COERCION[builtin.ret_type](result), meta);
     }
 
     static procedureToJS(tok: Token, env: BracketEnvironment): (...args: Token[]) => Token {
-        let fn: ASTProcedureNode;
+        const evaluated = Evaluator.evalExpanded(new ASTLiteralNode(tok), env);
 
-        if (tok.type === TokenType.PROCEDURE) {
-            fn = tok.value as ASTProcedureNode;
-        } else if (tok.type === TokenType.IDENT) {
-            if (env.has(tok.literal)) {
-                const bound = env.get(tok.literal)!;
-                if (bound instanceof ASTProcedureNode) {
-                    fn = bound;
-                } else if (bound instanceof ASTLiteralNode && bound.tok.type === TokenType.PROCEDURE) {
-                    if (!(bound.tok.value instanceof ASTProcedureNode))
-                        throw new Error(`malformed Procedure token.`);
-                    fn = bound.tok.value as ASTProcedureNode;
-                } else {
-                    throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
-                }
-            } else if (env.builtins.has(tok.literal)) {
-                return (...args: Token[]) => Evaluator.callBuiltin(env, tok.literal, args);
-            } else {
-                throw new Error(`${tok.literal}: undefined; cannot reference an identifier before its definition`);
-            }
-        } else {
-            throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
+        if (env.builtins.has(evaluated.literal)) {
+            return (...args: Token[]) =>
+                Evaluator.callBuiltin(env, evaluated.literal, args, evaluated.meta)
         }
 
+        if (evaluated.type !== TokenType.PROCEDURE) {
+            throw new Error(`application: not a procedure: expected a procedure that can be applied to arguments`);
+        }
+
+        if (!(evaluated.value instanceof ASTProcedureNode))
+            throw new Error(`malformed Procedure token`);
+
+        const fn = evaluated.value;
+
         return (...args: Token[]) => {
-            if (args.length !== fn.params.length) {
+            if (args.length !== fn.params.length)
                 throw new Error(`arity mismatch: expected ${fn.params.length} arguments, got ${args.length} arguments`);
-            }
 
-            const closure = new BracketEnvironment(tok.literal, fn.closure);
+            const closure = new BracketEnvironment("", fn.closure); // TODO: Label
 
-            for (let i = 0; i < args.length; i++) {
+            for (let i = 0; i < args.length; i++)
                 closure.define(fn.params[i], new ASTLiteralNode(args[i]));
-            }
 
-            let result = ASTVoid().tok;
+            let result = TokenVoid();
             for (const expr of fn.body) {
                 result = Evaluator.evalExpanded(expr, closure);
-                if (result.type === TokenType.ERROR)
-                    return result;
+                if (result.type === TokenType.ERROR) return result;
             }
 
             return result;
-        };
+        }
     }
 };

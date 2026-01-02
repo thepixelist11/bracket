@@ -1,0 +1,5 @@
+(define lst '(1 2 3 4))
+
+(car lst)
+(cdr lst)
+(cons 0 lst)

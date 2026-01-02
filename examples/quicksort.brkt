@@ -1,0 +1,11 @@
+(define (quicksort lst)
+  (if (empty? lst)
+      empty
+      (let ([pivot (car lst)]
+            [rest (cdr lst)])
+        (append (quicksort (filter (lambda (x) (< x pivot)) rest))
+                (list pivot)
+                (quicksort (filter (lambda (x) (>= x pivot)) rest))))))
+
+(define nums (list 5 3 8 1 2 7 4 6))
+(println (quicksort nums))

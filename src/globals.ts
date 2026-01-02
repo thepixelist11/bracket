@@ -89,6 +89,7 @@ export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
     [TokenType.IDENT]: "Ident",
     [TokenType.PROCEDURE]: "Procedure",
     [TokenType.LIST]: "List",
+    [TokenType.QUOTE]: "Quote",
 } as const;
 
 export const JS_PRINT_TYPE_MAP: Record<string, string> = {
