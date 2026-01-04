@@ -1,5 +1,5 @@
-import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram } from "./ast.js";
-import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata } from "./token.js";
+import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram, ASTIdent } from "./ast.js";
+import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, TokenIdent } from "./token.js";
 import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, STDOUT } from "./globals.js";
 import { BracketEnvironment } from "./env.js";
 
@@ -12,7 +12,6 @@ export type BuiltinFunction =
         ({ special?: false } &
             ({ macro: true } & {
                 expander: MacroExpander,
-                hygienic?: boolean,
             } | { macro?: false } & {
                 fn: (...args: any) => any,
                 ret_type: ValueType,

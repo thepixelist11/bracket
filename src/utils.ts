@@ -1,5 +1,6 @@
 import { Writable } from "stream";
 import util from "util";
+import os from "os";
 
 export class Output extends Writable {
     public write_count = 0;

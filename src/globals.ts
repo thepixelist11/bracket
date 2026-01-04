@@ -1,5 +1,5 @@
 import path from "path";
-import { TokenType, Token, ValueType } from "./token.js";
+import { TokenType, Token, ValueType, BOOL_FALSE, BOOL_TRUE } from "./token.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
 import { Output } from "./utils.js";
@@ -30,14 +30,6 @@ export const enum ParenType {
 };
 
 export const EOF_CHAR = "$" as const;
-export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
-
-export const enum ErrorTokenLiteral {
-    INVALID_IDENT_NAME = "invalid identifier name",
-    INVALID_CHARACTER_LITERAL = "invalid character literal",
-    NUMERIC_EXTRANEOUS_PERIODS = "extraneous periods in numeric",
-    INVALID_NEGATIVE_NUMERIC = "the character following a minus sign in a negative numeric was invalid",
-};
 
 export const CHAR_TOK_MAP: Record<string, TokenType> = {
     "(": TokenType.LPAREN,
@@ -88,6 +80,7 @@ export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
     [TokenType.PROCEDURE]: "Procedure",
     [TokenType.LIST]: "List",
     [TokenType.QUOTE]: "Quote",
+    [TokenType.FORM]: "Form",
 } as const;
 
 export const JS_PRINT_TYPE_MAP: Record<string, string> = {

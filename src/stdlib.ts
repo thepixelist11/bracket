@@ -1,6 +1,6 @@
 import { BuiltinFunction } from "./evaluator.js";
-import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc } from "./token.js";
-import { BOOL_FALSE, TOKEN_PRINT_TYPE_MAP } from "./globals.js";
+import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE } from "./token.js";
+import { TOKEN_PRINT_TYPE_MAP } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
@@ -399,6 +399,8 @@ export const STDLIB = new Map<string, BuiltinFunction>([
     }],
     ["string=?", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] === v), ret_type: TokenType.BOOL, arg_type: [TokenType.STR], min_args: 1, variadic: true, pure: true }],
     ["pi", { constant: true, value: TokenNum(3.141592653589793) }],
+    ["true", { constant: true, value: TokenBool(true) }],
+    ["false", { constant: true, value: TokenBool(false) }],
     ["list", { fn: (...args) => [...args], ret_type: TokenType.LIST, arg_type: [TokenType.ANY], variadic: true, min_args: 0, pure: true }],
     ["pair?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
     ["cons?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
@@ -692,6 +694,21 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         pure: true,
         min_args: 2
+    }],
+    ["swap!", {
+        macro: true,
+        min_args: 2,
+        expander: (args: ASTNode[]): ASTNode => {
+            const [a, b] = args;
+            return new ASTSExprNode(
+                ASTIdent("let"),
+                new ASTSExprNode(
+                    new ASTSExprNode(ASTIdent("tmp"), a),
+                ),
+                new ASTSExprNode(ASTIdent("set!"), a, b),
+                new ASTSExprNode(ASTIdent("set!"), b, ASTIdent("tmp")),
+            );
+        }
     }],
 ]);
 

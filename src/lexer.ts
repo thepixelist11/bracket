@@ -1,16 +1,565 @@
-import { CHAR_TOK_MAP, PartialExitCode, ErrorTokenLiteral, RPAREN_TYPE_MAP, PAREN_TYPE_MAP } from "./globals.js";
-import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym } from "./token.js";
+import { CHAR_TOK_MAP, PartialExitCode, RPAREN_TYPE_MAP, PAREN_TYPE_MAP } from "./globals.js";
+import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen } from "./token.js";
+
+export type ReaderContext = {
+    file_directives: Map<string, any>;
+    features: Set<string>;
+};
+
+export type ReaderMacro = {
+    dispatch: string;
+    cursor: "prefix" | "manual";
+    produces: TokenType;
+    fn: (
+        lexer: Lexer,
+        start: { row: number, col: number },
+        ctx: ReaderContext,
+    ) => { result: Token; code: PartialExitCode };
+};
+
+export class ReaderMacroTable {
+    private macros = new Map<string, ReaderMacro>();
+    private max_len = 0;
+
+    constructor(macros: ReaderMacro[] = []) {
+        for (const m of macros)
+            this.register(m);
+    }
+
+    register(m: ReaderMacro) {
+        this.macros.set(m.dispatch, m);
+        this.max_len = Math.max(this.max_len, m.dispatch.length);
+    }
+
+    resolve(lexer: Lexer): ReaderMacro | undefined {
+        for (let n = this.max_len; n > 0; n--) {
+            const key = lexer.peekNextNChars(n + 1).slice(1);
+            const macro = this.macros.get(key);
+            if (macro) return macro;
+        }
+
+        return undefined;
+    }
+}
+
+function splitForms(tokens: Token[]): Token[][] {
+    const forms: Token[][] = [];
+    let depth = 0;
+    let current: Token[] = [];
+
+    for (const tok of tokens) {
+        if (tok.type === TokenType.LPAREN) depth++;
+        if (tok.type === TokenType.RPAREN) depth--;
+
+        current.push(tok);
+
+        if (depth === 0) {
+            forms.push(current);
+            current = [];
+        }
+    }
+
+    return forms;
+}
+
+function readFormList(
+    lexer: Lexer,
+    start: TokenMetadata,
+    opts: { min: number, max?: number, error: string }
+): { forms: Token[][], code: PartialExitCode } | { result: Token; code: PartialExitCode } {
+    const form = lexer.readForm();
+    if (form.code !== PartialExitCode.SUCCESS)
+        return { result: form.result[0], code: form.code };
+
+    const toks = form.result;
+
+    if (toks.length < 2 ||
+        toks[0].type !== TokenType.LPAREN ||
+        toks.at(-1)!.type !== TokenType.RPAREN
+    ) {
+        return {
+            result: TokenError("expected a list of tokens", start),
+            code: PartialExitCode.ERROR
+        };
+    }
+
+    const inner = toks.slice(1, -1);
+    const forms = splitForms(inner);
+
+    if (
+        forms.length < opts.min ||
+        (opts.max !== undefined && forms.length > opts.max)
+    ) {
+        return {
+            result: TokenError(opts.error, start),
+            code: PartialExitCode.ERROR
+        };
+    }
+
+    return { forms, code: PartialExitCode.SUCCESS };
+}
+
+function readNForms(
+    lexer: Lexer,
+    n: number,
+): { forms: Token[][]; code: PartialExitCode } | { result: Token; code: PartialExitCode } {
+    const forms: Token[][] = [];
+
+    for (let i = 0; i < n; i++) {
+        const form = lexer.readForm();
+        if (form.code !== PartialExitCode.SUCCESS)
+            return { result: form.result[0], code: form.code };
+
+        forms.push(form.result);
+    }
+
+    return { forms, code: PartialExitCode.SUCCESS };
+}
+
+const READER_MACROS = new ReaderMacroTable([
+    {
+        dispatch: "t",
+        cursor: "prefix",
+        produces: TokenType.BOOL,
+        fn: (_, start) => ({
+            result: TokenBool(true, start),
+            code: PartialExitCode.SUCCESS,
+        })
+    },
+    {
+        dispatch: "T",
+        cursor: "prefix",
+        produces: TokenType.BOOL,
+        fn: (_, start) => ({
+            result: TokenBool(true, start),
+            code: PartialExitCode.SUCCESS,
+        })
+    },
+    {
+        dispatch: "f",
+        cursor: "prefix",
+        produces: TokenType.BOOL,
+        fn: (_, start) => ({
+            result: TokenBool(false, start),
+            code: PartialExitCode.SUCCESS,
+        })
+    },
+    {
+        dispatch: "F",
+        cursor: "prefix",
+        produces: TokenType.BOOL,
+        fn: (_, start) => ({
+            result: TokenBool(false, start),
+            code: PartialExitCode.SUCCESS,
+        })
+    },
+    {
+        dispatch: "\\",
+        cursor: "prefix",
+        produces: TokenType.CHAR,
+        fn: (lexer, _) => { lexer.movePosition(); return lexer.readCharTok() },
+    },
+    {
+        dispatch: ";",
+        cursor: "manual",
+        produces: TokenType.VOID,
+        fn: (lexer, start) => {
+            lexer.movePosition();
+            const ignored = lexer.readForm();
+            if (ignored.code !== PartialExitCode.SUCCESS)
+                return { result: ignored.result[0], code: ignored.code };
+
+            return {
+                result: TokenVoid(lexer.makeMeta(start)),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "|",
+        cursor: "manual",
+        produces: TokenType.VOID,
+        fn: (lexer, start) => {
+            let comment_stack = 1;
+            while (
+                lexer.cur &&
+                lexer.peek &&
+                comment_stack > 0
+            ) {
+                lexer.movePosition();
+                if (lexer.peekNextNChars(2) === "#|")
+                    comment_stack++;
+                if (lexer.peekNextNChars(2) === "|#")
+                    comment_stack--;
+            }
+
+            if (lexer.peekNextNChars(2) !== "|#") {
+                return {
+                    result: TokenError("could not find closing |#"),
+                    code: PartialExitCode.INCOMPLETE
+                };
+            }
+
+            lexer.movePosition();
+            lexer.movePosition();
+
+            return {
+                result: TokenVoid(lexer.makeMeta(start)),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "lang",
+        cursor: "prefix",
+        produces: TokenType.VOID,
+        fn: (lexer, start, ctx) => {
+            const lang_name = lexer.readIdentTok();
+            if (lang_name.code !== PartialExitCode.SUCCESS) return lang_name;
+
+            ctx.file_directives.set("language", lang_name.result.literal);
+
+            return {
+                result: TokenVoid(lexer.makeMeta(start)),
+                code: PartialExitCode.SUCCESS,
+            };
+        }
+    },
+    {
+        dispatch: "feat-require",
+        cursor: "prefix",
+        produces: TokenType.VOID,
+        fn: (lexer, start, ctx) => {
+            const res = readFormList(lexer, start, {
+                min: 1,
+                max: 2,
+                error: "expected #feat-require(feature err-msg)"
+            });
+
+            if ("result" in res) return res;
+
+            const [feature_form, err_form] = res.forms;
+
+            if (
+                feature_form.length !== 1 ||
+                feature_form[0].type !== TokenType.IDENT
+            ) {
+                return {
+                    result: TokenError("feature must be an identifier", start),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (
+                err_form && (
+                    err_form.length !== 1 ||
+                    err_form[0].type !== TokenType.STR
+                )
+            ) {
+                return {
+                    result: TokenError("error message must be a string", start),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            const feature = feature_form[0].literal;
+            const err = err_form ? err_form[0].literal : `this file requires ${feature}`;
+
+            if (!ctx.features.has(feature)) {
+                return {
+                    result: TokenError(err, start),
+                    code: PartialExitCode.ERROR,
+                };
+            }
+
+            return { result: TokenVoid(start), code: PartialExitCode.SUCCESS };
+        }
+    },
+    {
+        dispatch: "?",
+        cursor: "prefix",
+        produces: TokenType.ANY,
+        fn: (lexer, start, ctx) => {
+            const res = readFormList(lexer, start, {
+                min: 2,
+                max: 3,
+                error: "expected #?(feature then [else])"
+            });
+
+            if ("result" in res) return res;
+
+            const [feature_form, then_form, else_form] = res.forms;
+
+            if (
+                feature_form.length !== 1 ||
+                feature_form[0].type !== TokenType.IDENT
+            ) {
+                return {
+                    result: TokenError("feature must be an identifier", start),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            const feature = feature_form[0].literal;
+            const branch = ctx.features.has(feature)
+                ? then_form
+                : else_form;
+
+            if (branch)
+                lexer.inject(branch);
+
+            return {
+                result: TokenVoid(start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "+",
+        cursor: "prefix",
+        produces: TokenType.ANY,
+        fn: (lexer, start, ctx) => {
+            const res = readNForms(lexer, 2);
+
+            if ("result" in res) return res;
+
+            const [feature_form, body_form] = res.forms;
+
+            if (
+                feature_form.length !== 1 ||
+                feature_form[0].type !== TokenType.IDENT
+            ) {
+                return {
+                    result: TokenError("feature must be an identifier", start),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (ctx.features.has(feature_form[0].literal))
+                lexer.inject(body_form);
+
+            return {
+                result: TokenVoid(start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "-",
+        cursor: "prefix",
+        produces: TokenType.ANY,
+        fn: (lexer, start, ctx) => {
+            const res = readNForms(lexer, 2);
+
+            if ("result" in res) return res;
+
+            const [feature_form, body_form] = res.forms;
+
+            if (
+                feature_form.length !== 1 ||
+                feature_form[0].type !== TokenType.IDENT
+            ) {
+                return {
+                    result: TokenError("feature must be an identifier", start),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (!ctx.features.has(feature_form[0].literal))
+                lexer.inject(body_form);
+
+            return {
+                result: TokenVoid(start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "r",
+        cursor: "prefix",
+        produces: TokenType.NUM,
+        fn: (lexer, start) => {
+            const radix_tok = lexer.readNextToken();
+            const number_tok = lexer.readNextToken();
+            if (radix_tok.code !== PartialExitCode.SUCCESS) return radix_tok;
+            if (number_tok.code !== PartialExitCode.SUCCESS) return number_tok;
+
+            const radix = radix_tok.result;
+            const num = number_tok.result;
+
+            const radix_num = parseFloat(radix.literal);
+
+            if (radix.type !== TokenType.NUM ||
+                isNaN(radix_num) ||
+                !Number.isInteger(radix_num) ||
+                radix_num <= 0
+            ) {
+                return {
+                    result: TokenError("expected a natural radix"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            const num_num = parseInt(num.literal, radix_num);
+
+            if (Number.isNaN(num_num)) {
+                return {
+                    result: TokenError(`expected a valid number in base ${radix.literal}`),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            return {
+                result: TokenNum(num_num, start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "b",
+        cursor: "prefix",
+        produces: TokenType.NUM,
+        fn: (lexer, start) => {
+            const number_tok = lexer.readNextToken();
+            if (number_tok.code !== PartialExitCode.SUCCESS) return number_tok;
+
+            const num = parseInt(number_tok.result.literal, 2);
+
+            if (Number.isNaN(num)) {
+                return {
+                    result: TokenError(`expected a valid number in base 2`),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            return {
+                result: TokenNum(num, start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "o",
+        cursor: "prefix",
+        produces: TokenType.NUM,
+        fn: (lexer, start) => {
+            const number_tok = lexer.readNextToken();
+            if (number_tok.code !== PartialExitCode.SUCCESS) return number_tok;
+
+            const num = parseInt(number_tok.result.literal, 8);
+
+            if (Number.isNaN(num)) {
+                return {
+                    result: TokenError(`expected a valid number in base 8`),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            return {
+                result: TokenNum(num, start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "x",
+        cursor: "prefix",
+        produces: TokenType.NUM,
+        fn: (lexer, start) => {
+            const number_tok = lexer.readNextToken();
+            if (number_tok.code !== PartialExitCode.SUCCESS) return number_tok;
+
+            const num = parseInt(number_tok.result.literal, 16);
+
+            if (Number.isNaN(num)) {
+                return {
+                    result: TokenError(`expected a valid number in base 16`),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            return {
+                result: TokenNum(num, start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "uuid",
+        cursor: "prefix",
+        produces: TokenType.STR,
+        fn: (_, start) => {
+            let uuid = "";
+
+            for (let i = 0; i < 32; i++) {
+                const char = (Math.min(Math.floor(Math.random() * 16), 15)).toString(16);
+                uuid += char;
+                if (i === 8 || i === 12 || i === 16 || i === 20) {
+                    uuid += "-";
+                }
+            }
+
+            return {
+                result: TokenStr(uuid, start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
+        dispatch: "UUID",
+        cursor: "prefix",
+        produces: TokenType.STR,
+        fn: (_, start) => {
+            let uuid = "";
+
+            for (let i = 0; i < 32; i++) {
+                const char = (Math.min(Math.floor(Math.random() * 16), 15)).toString(16);
+                uuid += char;
+                if (i === 8 || i === 12 || i === 16 || i === 20) {
+                    uuid += "-";
+                }
+            }
+
+            return {
+                result: TokenStr(uuid.toUpperCase(), start),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+]);
+
+function getDefaultReaderFeatures() {
+    return [];
+}
 
 export class Lexer {
-    private idx: number = 0;
-    private str: string = "";
-    private col: number = 0;
-    private row: number = 0;
+    idx: number = 0;
+    str: string = "";
+    col: number = 0;
+    row: number = 0;
 
-    private get cur() { return this.str[this.idx] ?? ""; }
-    private get peek() { return this.str[this.idx + 1] ?? ""; }
+    ctx: ReaderContext = {
+        file_directives: new Map(),
+        features: new Set(),
+    }
 
-    private peekNextNChars(n: number) {
+    constructor(features: string[] = []) {
+        this.ctx.features = new Set([
+            ...features,
+            ...getDefaultReaderFeatures()
+        ]);
+    }
+
+    get cur() { return this.str[this.idx] ?? ""; }
+    get peek() { return this.str[this.idx + 1] ?? ""; }
+
+    private injected: Token[] = [];
+
+    inject(tokens: Token[]) {
+        this.injected.unshift(...tokens);
+    }
+
+    peekNextNChars(n: number) {
         let result = "";
         for (let i = 0; i < n; i++) {
             result += this.str[this.idx + i] ?? "";
@@ -18,7 +567,7 @@ export class Lexer {
         return result;
     }
 
-    public lex(expr: string): { result: Token[], code: PartialExitCode } {
+    lex(expr: string): { result: Token[], code: PartialExitCode } {
         this.idx = 0;
         this.str = expr;
         this.col = 0;
@@ -27,7 +576,7 @@ export class Lexer {
         this.skipComment();
 
         let toks: Token[] = [];
-        while (this.cur) {
+        while (this.cur || this.injected.length > 0) {
             const { result, code } = this.readNextToken();
             if (code !== PartialExitCode.SUCCESS) return { result: [result], code };
             toks.push(result);
@@ -36,42 +585,76 @@ export class Lexer {
         return { result: toks, code: PartialExitCode.SUCCESS };
     }
 
-    private readNextToken(): { result: Token, code: PartialExitCode } {
+    readNextToken(): { result: Token, code: PartialExitCode } {
+        if (this.injected.length > 0) {
+            return {
+                result: this.injected.shift()!,
+                code: PartialExitCode.SUCCESS
+            };
+        }
+
+        this.skipWhitespace();
+        this.skipComment();
+
         if (!this.cur)
             return { result: TokenEOF({ row: this.row, col: this.col }), code: PartialExitCode.SUCCESS };
 
         let final_result: Token = TokenVoid({ row: this.row, col: this.col });
 
         if (CHAR_TOK_MAP[this.cur]) {
-            final_result = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col });
+            if (Lexer.isLParen(this.cur)) {
+                const result = TokenLParen(PAREN_TYPE_MAP[this.cur], { row: this.row, col: this.col });
+                this.movePosition();
+                final_result = result;
+            } else {
+                final_result = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col });
+                this.movePosition();
+            }
+
+        } else if (this.cur === "#") {
+            const meta: TokenMetadata = { row: this.row, col: this.col };
+
+            const macro = READER_MACROS.resolve(this);
+            if (!macro) {
+                return {
+                    result: TokenError("unknown reader macro", meta),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
             this.movePosition();
+
+            if (macro.cursor === "prefix") {
+                for (let i = 0; i < macro.dispatch.length; i++)
+                    this.movePosition();
+            }
+
+            return macro.fn(this, meta, this.ctx);
+
         } else if (Lexer.isQuote(this.cur)) {
-            const { result, code } = this.readStringTok();
+            const tok = this.readStringTok();
 
-            if (code !== PartialExitCode.SUCCESS) return { code, result: result };
+            if (tok.code !== PartialExitCode.SUCCESS) return tok;
 
-            final_result = result;
+            final_result = tok.result;
+
         } else if (this.cur === "'") {
-            const { result, code } = this.readSymbolTok();
+            const tok = this.readSymbolTok();
 
-            if (code !== PartialExitCode.SUCCESS) return { result: result, code };
+            if (tok.code !== PartialExitCode.SUCCESS) return tok;
 
-            final_result = result;
-        } else if (/\#\\./.test(this.peekNextNChars(3))) {
-            const { result, code } = this.readCharTok();
+            final_result = tok.result;
 
-            if (code !== PartialExitCode.SUCCESS) return { code, result: result };
-
-            final_result = result;
         } else if (!Lexer.isWhitespace(this.cur)) {
-            const { result, code } =
-                Lexer.isNumeric(this.cur) || this.cur === "-"
+            const tok =
+                Lexer.isNumeric(this.cur) || Lexer.validNumericStartChar(this.cur)
                     ? this.readNumericTok()
                     : this.readIdentTok();
 
-            if (code !== PartialExitCode.SUCCESS) return { code, result: result };
+            if (tok.code !== PartialExitCode.SUCCESS) return tok;
 
-            final_result = result;
+            final_result = tok.result;
+
         } else {
             this.skipWhitespace();
             this.skipComment();
@@ -81,7 +664,42 @@ export class Lexer {
         return { result: final_result, code: PartialExitCode.SUCCESS };
     }
 
-    private movePosition(): void {
+    private readAtomicToken(): { result: Token; code: PartialExitCode } {
+        this.skipWhitespace();
+        this.skipComment();
+
+        if (!this.cur)
+            return { result: TokenEOF({ row: this.row, col: this.col }), code: PartialExitCode.SUCCESS };
+
+        if (CHAR_TOK_MAP[this.cur]) {
+            const tok = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col });
+            this.movePosition();
+            return { result: tok, code: PartialExitCode.SUCCESS };
+        }
+
+        if (this.cur === "#") {
+            const meta = { row: this.row, col: this.col };
+            const macro = READER_MACROS.resolve(this);
+            if (!macro)
+                return { result: TokenError("unknown reader macro", meta), code: PartialExitCode.ERROR };
+
+            this.movePosition();
+            if (macro.cursor === "prefix")
+                for (let i = 0; i < macro.dispatch.length; i++)
+                    this.movePosition();
+
+            return macro.fn(this, meta, this.ctx);
+        }
+
+        if (Lexer.isQuote(this.cur)) return this.readStringTok();
+        if (this.cur === "'") return this.readSymbolTok();
+
+        return Lexer.isNumeric(this.cur) || Lexer.validNumericStartChar(this.cur)
+            ? this.readNumericTok()
+            : this.readIdentTok();
+    }
+
+    movePosition(): void {
         if (this.cur === "\n") {
             this.row++;
             this.col = 0;
@@ -92,13 +710,13 @@ export class Lexer {
         this.idx++;
     }
 
-    private skipWhitespace(): void {
+    skipWhitespace(): void {
         while (Lexer.isWhitespace(this.cur)) {
             this.movePosition();
         }
     }
 
-    private skipComment(): void {
+    skipComment(): void {
         if (this.cur === ";") {
             // Type assertion due to irrelevant type mismatch warning
             while (this.cur && ((this.cur as string) !== "\n" || this.cur === ";")) {
@@ -107,104 +725,87 @@ export class Lexer {
         }
     }
 
-    private readNumericTok(): { result: Token, code: PartialExitCode } {
+    // TODO: Allow for exponent notation
+    readNumericTok(): { result: Token, code: PartialExitCode } {
         let num = "";
         let previous_dot = false;
         const col = this.col;
         const row = this.row;
 
-        if (this.cur === "-") {
-            if (this.peek === ".") {
-                this.movePosition();
-                return {
-                    result: TokenError(ErrorTokenLiteral.INVALID_NEGATIVE_NUMERIC, { row, col }),
-                    code: PartialExitCode.ERROR
-                };
-            }
+        this.skipComment();
+        this.skipWhitespace();
 
-            num += "-";
-            this.movePosition();
-        }
+        while (this.cur && Lexer.isNumeric(this.cur)) {
+            num += this.cur;
 
-        while (this.cur && (Lexer.isNumeric(this.cur) || this.cur === ".")) {
             if (this.cur === ".") {
                 if (previous_dot) {
+                    this.movePosition();
                     return {
-                        result: TokenError(ErrorTokenLiteral.NUMERIC_EXTRANEOUS_PERIODS, { row, col }),
-                        code: PartialExitCode.ERROR
+                        result: TokenIdent(num, { row, col }),
+                        code: PartialExitCode.SUCCESS
                     };
                 }
 
                 previous_dot = true;
-            } else {
-                previous_dot = false;
             }
 
-            num += this.cur;
             this.movePosition();
         }
+
+        if (Number.isNaN(parseFloat(num)))
+            return { result: TokenIdent(num, { row, col }), code: PartialExitCode.SUCCESS };
 
         return { result: TokenNum(num, { row, col }), code: PartialExitCode.SUCCESS };
     }
 
-    private readListTok(starting_paren?: string): { result: Token, code: PartialExitCode } {
-        const col = this.col;
+    readListTokens(starting_paren?: string): { result: Token[], code: PartialExitCode } {
         const row = this.row;
-        let open_char: string;
+        const col = this.col;
 
+        let open = starting_paren ?? this.cur;
         if (!starting_paren) {
             if (!Lexer.isLParen(this.cur)) {
-                return { result: TokenError("expected opening parentheses", { row, col }), code: PartialExitCode.ERROR };
+                return {
+                    result: [TokenError("expected an opening parentheses", { row, col })],
+                    code: PartialExitCode.ERROR
+                };
             }
-
-            open_char = this.cur;
             this.movePosition();
+        }
+
+        const close = RPAREN_TYPE_MAP[PAREN_TYPE_MAP[open]];
+        const tokens = [
+            new Token(TokenType.LPAREN, open, { row, col }),
+        ];
+
+        this.skipWhitespace();
+        this.skipComment();
+
+        while (this.cur && this.cur !== close) {
+            const form = this.readForm();
+            if (form.code !== PartialExitCode.SUCCESS) return form;
+
+            tokens.push(...form.result);
+
             this.skipWhitespace();
-        } else {
-            open_char = starting_paren;
+            this.skipComment();
         }
 
-        const elems: Token[] = [];
-        const close_char = RPAREN_TYPE_MAP[PAREN_TYPE_MAP[open_char]];
-
-        while (this.cur && this.cur !== close_char) {
-            let tok_result: { result: Token, code: PartialExitCode };
-
-            if (Lexer.isLParen(this.cur)) {
-                tok_result = this.readListTok();
-            } else if (Lexer.isQuote(this.cur)) {
-                tok_result = this.readStringTok();
-            } else if (this.cur === "'") {
-                tok_result = this.readSymbolTok();
-            } else if (!Lexer.isWhitespace(this.cur)) {
-                tok_result = Lexer.isNumeric(this.cur) || this.cur === "-"
-                    ? this.readNumericTok()
-                    : this.readSymbolTok(true);
-            } else {
-                this.skipWhitespace();
-                continue;
-            }
-
-            if (tok_result.code !== PartialExitCode.SUCCESS)
-                return { result: tok_result.result, code: tok_result.code };
-
-            elems.push(tok_result.result);
-            this.skipWhitespace();
+        if (this.cur !== close) {
+            return {
+                result: [TokenError(`expected a closing ${close}`, { row, col })],
+                code: PartialExitCode.INCOMPLETE
+            };
         }
 
-        if (this.cur !== close_char) {
-            return { result: TokenError(`expected closing ${close_char}`, { row, col }), code: PartialExitCode.INCOMPLETE };
-        }
-
+        tokens.push(TokenRParen(PAREN_TYPE_MAP[close], { row: this.row, col: this.col }));
         this.movePosition();
 
-        return {
-            result: new Token(TokenType.LIST, "", { row, col }, elems),
-            code: PartialExitCode.SUCCESS
-        }
+        return { result: tokens, code: PartialExitCode.SUCCESS };
     }
 
-    private readStringEscapeSeq(): string {
+    readStringEscapeSeq(): { result: string, code: PartialExitCode } {
         function convertSeqToString(ch: string) {
             const code = ch.codePointAt(0)!;
 
@@ -229,7 +830,7 @@ export class Lexer {
         }
 
         // Any assertion to prevent overly specific type narrowing
-        if ((this.cur as any) !== "\\") return "";
+        if ((this.cur as any) !== "\\") return { result: "", code: PartialExitCode.SUCCESS };
         this.movePosition();
 
         let seq = this.cur;
@@ -251,7 +852,7 @@ export class Lexer {
                 seq += this.cur;
             }
 
-            if (seq.length === 0) throw new Error(`Invalid escape sequence: \\x`);
+            if (seq.length === 0) return { result: `Invalid escape sequence: \\x`, code: PartialExitCode.ERROR };
 
             this.movePosition();
 
@@ -264,7 +865,7 @@ export class Lexer {
                 seq += this.cur;
             }
 
-            if (seq.length === 0) throw new Error(`Invalid escape sequence: \\u`);
+            if (seq.length === 0) return { result: `Invalid escape sequence: \\u`, code: PartialExitCode.ERROR };
 
             this.movePosition();
 
@@ -298,7 +899,7 @@ export class Lexer {
                 seq += this.cur;
             }
 
-            if (seq.length === 0) throw new Error(`Invalid escape sequence: \\U`);
+            if (seq.length === 0) return { result: `Invalid escape sequence: \\U`, code: PartialExitCode.ERROR };
 
             this.movePosition();
 
@@ -324,10 +925,10 @@ export class Lexer {
             this.movePosition();
         }
 
-        return seq;
+        return { result: seq, code: PartialExitCode.SUCCESS };
     }
 
-    private readStringTok(): { result: Token, code: PartialExitCode } {
+    readStringTok(): { result: Token, code: PartialExitCode } {
         let str = "";
         let quote = this.cur;
         const col = this.col;
@@ -341,13 +942,15 @@ export class Lexer {
             }
 
             if (this.cur === "\\") {
-                str += this.readStringEscapeSeq();
+                const esc = this.readStringEscapeSeq();
+                if (esc.code !== PartialExitCode.SUCCESS) return { result: TokenError(esc.result, { row, col }), code: esc.code };
+                str += esc.result;
                 continue;
             }
 
             if (!this.peek) {
                 return {
-                    result: TokenError("Missing closing \"", { row, col }),
+                    result: TokenError(`Missing closing ${quote}`, { row, col }),
                     code: PartialExitCode.INCOMPLETE
                 };
             }
@@ -363,11 +966,14 @@ export class Lexer {
         };
     }
 
-    private readIdentTok(): { result: Token, code: PartialExitCode } {
+    readIdentTok(): { result: Token, code: PartialExitCode } {
         let lit = "";
         const col = this.col;
         const row = this.row;
         let quoted = false;
+
+        this.skipComment();
+        this.skipWhitespace();
 
         // TODO: Allow escaping |
         if (this.cur === "|") {
@@ -386,41 +992,53 @@ export class Lexer {
         ) {
             this.movePosition();
             return {
-                result: TokenError(ErrorTokenLiteral.INVALID_IDENT_NAME, { row, col }),
+                result: TokenError("invalid identifier name", { row, col }),
                 code: PartialExitCode.ERROR
             };
         }
 
         while (
             this.cur &&
-            (
+            (quoted || (
                 !Lexer.isWhitespace(this.cur) &&
                 !Lexer.isQuote(this.cur) &&
-                !CHAR_TOK_MAP[this.cur] ||
-                quoted
-            ) &&
-            this.cur !== "|"
+                !CHAR_TOK_MAP[this.cur]
+            ))
         ) {
+            if (this.cur === "|") break;
+
             lit += this.cur;
             this.movePosition();
         }
 
         if (!quoted) {
-            if (lit[0] === "#" && lit[1] !== "%")
-                throw new Error(`invalid identifier: ${lit}; an identifier may not start with # without a following %`);
+            if (lit[0] === "#" && lit[1] !== "%") {
+                return {
+                    result: TokenError(`invalid identifier: ${lit}; an identifier may not start with # without a following %`, { row, col }),
+                    code: PartialExitCode.ERROR
+                };
+            }
 
-            if (lit === ".")
-                throw new Error(`invalid identifier: .; invalid use of .`);
+            if (lit === ".") {
+                return {
+                    result: TokenError(`invalid identifier: .; invalid use of .`, { row, col }),
+                    code: PartialExitCode.ERROR
+                };
+            }
 
-            if (lit === "")
-                throw new Error(`invalid identifier; empty identifiers are not allowed without |`);
+            if (lit === "") {
+                return {
+                    result: TokenError(`invalid identifier; empty identifiers are not allowed without |`, { row, col }),
+                    code: PartialExitCode.ERROR
+                };
+            }
         }
 
         if (quoted) {
             if (this.cur !== "|") {
                 return {
                     result: TokenError("expected closing |", { row, col }),
-                    code: PartialExitCode.ERROR
+                    code: PartialExitCode.INCOMPLETE
                 };
             }
 
@@ -430,7 +1048,7 @@ export class Lexer {
         return { result: TokenIdent(lit, { row, col }), code: PartialExitCode.SUCCESS }
     }
 
-    private readSymbolTok(allow_no_starting_quote = false): { result: Token, code: PartialExitCode } {
+    readSymbolTok(allow_no_starting_quote = false): { result: Token, code: PartialExitCode } {
         const col = this.col;
         const row = this.row;
         let result = TokenVoid({ row, col });
@@ -455,9 +1073,10 @@ export class Lexer {
         if (next.result.type === TokenType.IDENT) {
             result = TokenSym(next.result.literal, { row, col });
         } else if (next.result.type === TokenType.LPAREN) {
-            const list = this.readListTok(next.result.literal);
-            if (list.code !== PartialExitCode.SUCCESS) return list;
-            result = list.result;
+            result = TokenVoid();
+            // const list = this.readListTok(next.result.literal);
+            // if (list.code !== PartialExitCode.SUCCESS) return list;
+            // result = list.result;
         } else {
             result = next.result;
         }
@@ -465,7 +1084,7 @@ export class Lexer {
         return { result, code: PartialExitCode.SUCCESS };
     }
 
-    private readCharTok(): { result: Token, code: PartialExitCode } {
+    readCharTok(): { result: Token, code: PartialExitCode } {
         function convertCharToString(ch: string) {
             const code = ch.codePointAt(0)!;
 
@@ -493,14 +1112,6 @@ export class Lexer {
         const col = this.col;
         const row = this.row;
 
-        if (!/\#\\./.test(this.peekNextNChars(3)))
-            return {
-                result: TokenError(ErrorTokenLiteral.INVALID_CHARACTER_LITERAL, { row, col }),
-                code: PartialExitCode.ERROR
-            }
-
-        this.movePosition();
-        this.movePosition();
         let ch = "";
 
         do {
@@ -531,14 +1142,21 @@ export class Lexer {
                 } else if (ch[0] === "u" || ch[0] === "U") {
                     let hex = ch.substring(1);
 
-                    if (!/^[0-9A-Fa-f]{1,8}$/.test(hex))
-                        throw new Error(`Invalid unicode character literal: #\\${ch}`);
+                    if (!/^[0-9A-Fa-f]{1,8}$/.test(hex)) {
+                        return {
+                            result: TokenError(`Invalid unicode character literal: #\\${ch}`, { row, col }),
+                            code: PartialExitCode.ERROR
+                        };
+                    }
 
                     let int = parseInt(hex, 16);
 
                     ch = convertCharToString(String.fromCodePoint(int));
                 } else if (ch.length > 1) {
-                    throw new Error(`Invalid character literal: #\\${ch}`)
+                    return {
+                        result: TokenError(`Invalid character literal: #\\${ch}`, { row, col }),
+                        code: PartialExitCode.ERROR
+                    };
                 }
 
                 ch = convertCharToString(ch);
@@ -548,9 +1166,34 @@ export class Lexer {
         return { result: TokenChar(`${ch}`, { row, col }), code: PartialExitCode.SUCCESS };
     }
 
+    readForm(): { result: Token[]; code: PartialExitCode } {
+        this.skipWhitespace();
+        this.skipComment();
+
+        const tok = this.readNextToken();
+        if (tok.code !== PartialExitCode.SUCCESS)
+            return { result: [tok.result], code: tok.code };
+
+        if (tok.result.type === TokenType.LPAREN) {
+            return this.readListTokens(tok.result.literal);
+        }
+
+        return { result: [tok.result], code: PartialExitCode.SUCCESS };
+    }
+
+    makeMeta(row: number, col: number): TokenMetadata
+    makeMeta(pos: { row: number, col: number }): TokenMetadata
+    makeMeta(row: number | { row: number, col: number }, col?: number): TokenMetadata {
+        if (typeof row === "object")
+            return { row: row.row, col: row.col };
+        else
+            return { row, col: col ?? -1 };
+    }
+
     static isWhitespace(ch: string): boolean { return /\s/.test(ch); }
-    static isNumeric(ch: string): boolean { return /[\d]/.test(ch); }
-    static isQuote(ch: string): boolean { return /["`]/.test(ch); }
+    static isNumeric(ch: string): boolean { return /[\d+.-]/.test(ch); }
+    static validNumericStartChar(ch: string): boolean { return /^[-+.]$/.test(ch); }
+    static isQuote(ch: string): boolean { return /["]/.test(ch); }
     static isIllegalIdentChar(ch: string, quoted: boolean = false): boolean { return (quoted ? /[|]/ : /[()[\]{}",'`;|.\\\s]/).test(ch); }
     static isLParen(ch: string): boolean { return /[(\[{]/.test(ch); }
     static isRParen(ch: string): boolean { return /[)\]}]/.test(ch); }

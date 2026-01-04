@@ -1,6 +1,8 @@
-import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP, BOOL_TRUE, BOOL_FALSE, TOKEN_PRINT_TYPE_MAP } from "./globals.js";
+import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP, TOKEN_PRINT_TYPE_MAP } from "./globals.js";
 import { Lexer } from "./lexer.js";
 import { ASTProcedureNode } from "./ast.js";
+
+export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
 
 export interface TokenMetadata { row: number, col: number }
 
@@ -90,21 +92,24 @@ export const enum TokenType {
     PROCEDURE,
     LIST,
     QUOTE,
+    FORM,
 };
 
-export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, meta) };
-export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenType.EOF, EOF_CHAR, meta) };
-export function TokenVoid(meta?: TokenMetadata) { return new Token(TokenType.VOID, "", meta) };
-export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], meta) };
-export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], meta) };
-export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), meta) };
-export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), meta) };
-export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, meta) };
-export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, meta) };
-export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, meta) };
-export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, meta) };
-export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", meta, proc) };
-export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", meta, list) };
+function defaultMeta(meta: Partial<TokenMetadata> = {}): TokenMetadata { return { row: meta.row ?? -1, col: meta.col ?? -1 }; }
+export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, defaultMeta(meta)) };
+export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenType.EOF, EOF_CHAR, defaultMeta(meta)) };
+export function TokenVoid(meta?: TokenMetadata) { return new Token(TokenType.VOID, "", defaultMeta(meta)) };
+export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], defaultMeta(meta)) };
+export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], defaultMeta(meta)) };
+export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), defaultMeta(meta)) };
+export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), defaultMeta(meta)) };
+export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, defaultMeta(meta)) };
+export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, defaultMeta(meta)) };
+export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, defaultMeta(meta)) };
+export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, defaultMeta(meta)) };
+export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), proc) };
+export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
+export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), val) };
 
 export type ValueType =
     | TokenType.ANY

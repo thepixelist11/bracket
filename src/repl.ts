@@ -118,7 +118,7 @@ export function REPL(use_hist = true) {
     }
 
     function stdoutFlush() {
-        STDOUT.write(env.stdout.buffer);
+        STDOUT.write(env.stdout.buffer + (env.stdout.buffer === "" || env.stdout.buffer.at(-1) === "\n" ? "" : "\n"));
         env.stdout.reset();
     }
 
