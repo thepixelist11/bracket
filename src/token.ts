@@ -1,4 +1,4 @@
-import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP, BOOL_TRUE, BOOL_FALSE } from "./globals.js";
+import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP, BOOL_TRUE, BOOL_FALSE, TOKEN_PRINT_TYPE_MAP } from "./globals.js";
 import { Lexer } from "./lexer.js";
 import { ASTProcedureNode } from "./ast.js";
 
@@ -25,7 +25,7 @@ export class Token {
             .replaceAll("\x22", "\\\"");
     }
 
-    toString(): string {
+    toString(nested_list = false): string {
         switch (this.type) {
             case TokenType.ERROR:
                 if (this.meta.row >= -1 && this.meta.col >= 0)
@@ -41,28 +41,31 @@ export class Token {
             case TokenType.NUM:
                 return `${parseFloat(this.literal)}`;
             case TokenType.SYM:
-                if (this.literal.split("").some(ch => Lexer.isIllegalSymbolChar(ch)))
-                    return `'|${this.literal}|`;
+                if (this.literal.split("").some(ch => Lexer.isIllegalIdentChar(ch)) || this.literal === "")
+                    return `${nested_list ? "" : "'"}|${this.literal}|`;
                 else
-                    return `'${this.literal}`;
+                    return `${nested_list ? "" : "'"}${this.literal}`;
             case TokenType.BOOL:
                 return `${this.literal}`;
             case TokenType.STR:
                 return `"${this.escapeString(this.literal)}"`;
             case TokenType.IDENT:
-                return `#<ident:${this.literal}>`;
+                if (this.literal.split("").some(ch => Lexer.isIllegalIdentChar(ch)))
+                    return `#<ident:|${this.literal}|>`;
+                else
+                    return `#<ident:${this.literal}>`;
             case TokenType.CHAR:
                 return `#\\${this.literal}`;
             case TokenType.VOID:
-                return "";
+                return "#<void>";
             case TokenType.PROCEDURE:
                 return "#<procedure>";
             case TokenType.LIST:
-                return `'(${(this.value as Token[] ?? []).map(t => t.toString()).join(" ")})`; // FIXME: Prevent nested lists from having '
+                return `${nested_list ? "" : "'"}(${(this.value as Token[]).map(t => t.toString(true)).join(" ")})`;
             case TokenType.ANY:
-                return `<any>`
-            case TokenType.QUOTE:
-                return `<quote>`
+                return `#<any>`
+            default:
+                throw new Error(`unhandled token type: ${TOKEN_PRINT_TYPE_MAP[this.type]}`);
         }
     }
 
@@ -96,7 +99,7 @@ export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetad
 export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], meta) };
 export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), meta) };
 export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), meta) };
-export function TokenBool(bool: boolean, meta?: TokenMetadata) { return new Token(TokenType.BOOL, bool ? BOOL_TRUE : BOOL_FALSE, meta) };
+export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, meta) };
 export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, meta) };
 export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, meta) };
 export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, meta) };

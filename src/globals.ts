@@ -35,10 +35,8 @@ export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
 export const enum ErrorTokenLiteral {
     INVALID_IDENT_NAME = "invalid identifier name",
     INVALID_CHARACTER_LITERAL = "invalid character literal",
-    INVALID_SYMBOL_LITERAL = "invalid symbol literal",
     NUMERIC_EXTRANEOUS_PERIODS = "extraneous periods in numeric",
     INVALID_NEGATIVE_NUMERIC = "the character following a minus sign in a negative numeric was invalid",
-    ILLEGAL_SYMBOL_HASH_START = "symbols cannot begin with # unless followed by %",
 };
 
 export const CHAR_TOK_MAP: Record<string, TokenType> = {

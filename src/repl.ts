@@ -149,6 +149,9 @@ export function REPL(use_hist = true) {
                 return ret;
             }
 
+            if (!(ast instanceof ASTProgram))
+                throw new Error(`unexpected ASTNode; expected a Program`);
+
             const value = e.evaluateProgram(ast, env, env.stdout, false);
 
             appendREPLHistory(expr.split("\n"));

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-// TODO: Allow for multiple top-level expressions.
 // TODO: Improve error handling.
 // TODO: Add fraction output rather than decimal.
 // TODO: Use custom math functions. e.g. sqrt(-1) -> i instead of NaN

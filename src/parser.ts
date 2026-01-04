@@ -1,4 +1,4 @@
-import { Token, TokenType, TokenIdent, TokenList } from "./token.js";
+import { Token, TokenList, TokenType } from "./token.js";
 import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./globals.js";
 import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError, ASTProgram } from "./ast.js";
 
@@ -8,7 +8,7 @@ export class Parser {
 
     private get cur() { return this.toks[this.idx] ?? undefined; }
 
-    public parse(toks: Token[], name?: string): { result: ASTProgram, code: PartialExitCode } {
+    public parse(toks: Token[], name?: string): { result: ASTProgram | ASTNode, code: PartialExitCode } {
         this.toks = toks;
         this.idx = 0;
 
@@ -18,7 +18,7 @@ export class Parser {
             const expr = this.parseExpression();
             if (expr.code !== PartialExitCode.SUCCESS) {
                 return {
-                    result: null as any,
+                    result: expr.result,
                     code: expr.code
                 };
             }
@@ -40,19 +40,10 @@ export class Parser {
             };
         }
 
-        switch (this.cur.type) {
+        // Any assertion to prevent overly specific type narrowing
+        switch (this.cur.type as any) {
             case TokenType.LPAREN: {
-                return this.parseList();
-            }
-
-            case TokenType.ERROR: {
-                return {
-                    result: ASTError(
-                        this.cur.literal,
-                        this.cur.meta,
-                    ),
-                    code: PartialExitCode.ERROR,
-                }
+                return this.parseSExpr();
             }
 
             case TokenType.QUOTE: {
@@ -100,6 +91,16 @@ export class Parser {
                 return { result: list, code: PartialExitCode.SUCCESS };
             }
 
+            case TokenType.ERROR: {
+                return {
+                    result: ASTError(
+                        this.cur.literal,
+                        this.cur.meta,
+                    ),
+                    code: PartialExitCode.ERROR,
+                }
+            }
+
             default: {
                 const tok = this.cur;
                 this.idx++;
@@ -111,7 +112,7 @@ export class Parser {
         }
     }
 
-    private parseList(): { result: ASTNode, code: PartialExitCode } {
+    private parseSExpr(): { result: ASTNode, code: PartialExitCode } {
         const start = this.cur;
         const elements: ASTNode[] = [];
         this.idx++;

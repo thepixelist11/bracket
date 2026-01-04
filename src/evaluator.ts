@@ -1,6 +1,6 @@
-import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTVoid, ASTProgram } from "./ast.js";
+import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram } from "./ast.js";
 import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata } from "./token.js";
-import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, BOOL_FALSE, STDOUT } from "./globals.js";
+import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, STDOUT } from "./globals.js";
 import { BracketEnvironment } from "./env.js";
 
 export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
@@ -60,7 +60,7 @@ export class Evaluator {
         return last;
     }
 
-    static evalExpanded(ast: ASTNode, env: BracketEnvironment) {
+    static evalExpanded(ast: ASTNode, env: BracketEnvironment): Token {
         if (ast instanceof ASTLiteralNode) {
             if (ast.tok.type === TokenType.IDENT) {
                 if (env.has(ast.tok.literal)) {
@@ -150,11 +150,8 @@ export class Evaluator {
 
     static expand(ast: ASTNode, env: BracketEnvironment): ASTNode {
         if (ast instanceof ASTLiteralNode) return ast;
-
         if (ast instanceof ASTProcedureNode) { throw new Error("procedure node appeared during macro expansion"); }
-
-        if (ast.elements.length === 0)
-            return ast;
+        if (ast.elements.length === 0) return ast;
 
         const expanded_op = Evaluator.expand(ast.first, env);
 
@@ -208,11 +205,13 @@ export class Evaluator {
             const current_arg_type = (i >= builtin.arg_type.length ? builtin.arg_type.at(-1) : builtin.arg_type[i])!;
             const current_raw_type = builtin.raw ? (i >= builtin.raw.length ? builtin.raw.at(-1) : builtin.raw[i]) : "normal";
 
+            let arg = args[i];
+
             if (current_arg_type === TokenType.ANY) {
                 if (builtin.raw && builtin.raw[i] !== "token")
                     throw new Error(`Functions with arguments of type Any must take in a raw token. Got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${args[i].toString()}`);
 
-                typed_args.push(args[i]);
+                typed_args.push(arg);
                 continue;
             }
 
@@ -226,14 +225,16 @@ export class Evaluator {
                 continue;
             }
 
-            if (args[i].type !== current_arg_type) {
-                throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${args[i].toString()}`);
+            if (arg.type !== current_arg_type) {
+                throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[arg.type]} ${args[i].toString()}`);
             }
 
-            typed_args.push((current_raw_type === "normal") ? ARGUMENT_TYPE_COERCION[current_arg_type](args[i], env) : args[i]);
+            typed_args.push((current_raw_type === "normal") ? ARGUMENT_TYPE_COERCION[current_arg_type](arg, env) : args[i]);
         }
 
-        let result = builtin.env_param ? builtin.fn(env, ...typed_args) : builtin.fn(...typed_args);
+        let result = builtin.env_param
+            ? builtin.fn(env, ...typed_args)
+            : builtin.fn(...typed_args);
 
         if (builtin.ret_type === TokenType.ANY) {
             if (!(result instanceof Token))

@@ -1,5 +1,4 @@
-import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid } from "./token.js";
-import { Evaluator } from "./evaluator.js";
+import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList } from "./token.js";
 import { BracketEnvironment } from "./env.js";
 
 interface ASTBase {
@@ -46,7 +45,7 @@ export class ASTProcedureNode implements ASTBase {
         this.params = params;
         this.body = body;
         this.closure = new BracketEnvironment(name, env);
-        this.closure.define(name, ASTVoid());
+        this.closure.define(name, ASTVoid(this.meta));
     }
 }
 
@@ -56,41 +55,43 @@ export class ASTProgram {
 
 export type ASTNode = ASTLiteralNode | ASTSExprNode | ASTProcedureNode;
 
-
-export function ASTIdent(name: string): ASTLiteralNode {
-    return new ASTLiteralNode(TokenIdent(name));
+export function ASTIdent(name: string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenIdent(name, meta));
 }
 
-export function ASTSym(name: string): ASTLiteralNode {
-    return new ASTLiteralNode(TokenSym(name));
+export function ASTSym(name: string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenSym(name, meta));
 }
 
-export function ASTNum(value: number): ASTLiteralNode {
-    return new ASTLiteralNode(TokenNum(value));
+export function ASTNum(value: number | string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenNum(value, meta));
 }
 
-export function ASTBool(value: boolean): ASTLiteralNode {
-    return new ASTLiteralNode(TokenBool(value));
+export function ASTBool(value: boolean | string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenBool(value, meta));
 }
 
-export function ASTVoid(): ASTLiteralNode {
-    return new ASTLiteralNode(TokenVoid());
+export function ASTVoid(meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenVoid(meta));
 }
 
-export function ASTStr(value: string): ASTLiteralNode {
-    return new ASTLiteralNode(TokenStr(value));
+export function ASTStr(value: string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenStr(value, meta));
 }
 
-export function ASTChar(value: string): ASTLiteralNode {
-    return new ASTLiteralNode(TokenChar(value));
+export function ASTChar(value: string, meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenChar(value, meta));
 }
 
 export function ASTError(msg: string, meta?: TokenMetadata): ASTLiteralNode {
     return new ASTLiteralNode(TokenError(msg, meta));
 }
 
-export function ASTCall(op: string, ...args: ASTNode[]): ASTSExprNode {
-    return new ASTSExprNode(ASTIdent(op), ...args);
+export function ASTList(elems: Token[], meta?: TokenMetadata): ASTLiteralNode {
+    return new ASTLiteralNode(TokenList(elems, meta));
 }
 
+export function ASTCall(op: string, meta?: TokenMetadata, ...args: ASTNode[]): ASTSExprNode {
+    return new ASTSExprNode(ASTIdent(op, meta), ...args);
+}
 

@@ -7,6 +7,7 @@ import { Evaluator } from "./evaluator.js";
 import { TokenError, TokenType } from "./token.js";
 import fs from "fs";
 import path from "path";
+import { ASTProgram } from "./ast.js";
 
 export function runFile(filepath: string, env?: BracketEnvironment) {
     if (!filepath)
@@ -36,6 +37,9 @@ export function runFile(filepath: string, env?: BracketEnvironment) {
 
         const { result: ast, code: parse_code } = p.parse(toks, rel_fp);
         if (parse_code !== PartialExitCode.SUCCESS) throw new Error(`parser error`);
+
+        if (!(ast instanceof ASTProgram))
+            throw new Error(`unexpected ASTNode; expected a Program`);
 
         e.evaluateProgram(ast, env);
 

@@ -372,6 +372,7 @@ export const STDLIB = new Map<string, BuiltinFunction>([
     ["symbol?", { fn: (x) => x.type === TokenType.SYM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
     ["number?", { fn: (x) => x.type === TokenType.NUM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
     ["string?", { fn: (x) => x.type === TokenType.STR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
+    ["char?", { fn: (x) => x.type === TokenType.CHAR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
     ["boolean?", { fn: (x) => x.type === TokenType.BOOL, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
     ["list?", { fn: (x) => x.type === TokenType.LIST, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
     ["string->symbol", { fn: (x) => x, ret_type: TokenType.SYM, arg_type: [TokenType.STR], min_args: 1, pure: true }],
@@ -741,8 +742,6 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment): Token {
         if (args.length > 2) throw new Error("define: bad syntax; multiple expressions after identifier");
         const final_value = Evaluator.evalExpanded(body_nodes[0], env);
 
-        // TODO: This currently errors twice. Once for the original error,
-        // once for this define.
         if (final_value.type === TokenType.ERROR)
             throw new Error(final_value.literal);
 
