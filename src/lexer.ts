@@ -728,7 +728,7 @@ export class Lexer {
     // TODO: Allow for exponent notation
     readNumericTok(): { result: Token, code: PartialExitCode } {
         let num = "";
-        let previous_dot = false;
+        let dot_count = 0;
         const col = this.col;
         const row = this.row;
 
@@ -738,22 +738,12 @@ export class Lexer {
         while (this.cur && Lexer.isNumeric(this.cur)) {
             num += this.cur;
 
-            if (this.cur === ".") {
-                if (previous_dot) {
-                    this.movePosition();
-                    return {
-                        result: TokenIdent(num, { row, col }),
-                        code: PartialExitCode.SUCCESS
-                    };
-                }
-
-                previous_dot = true;
-            }
+            if (this.cur === ".") dot_count++;
 
             this.movePosition();
         }
 
-        if (Number.isNaN(parseFloat(num)))
+        if (dot_count > 1 || Number.isNaN(parseFloat(num)))
             return { result: TokenIdent(num, { row, col }), code: PartialExitCode.SUCCESS };
 
         return { result: TokenNum(num, { row, col }), code: PartialExitCode.SUCCESS };
