@@ -136,6 +136,11 @@ export class Parser {
                 };
             }
 
+            if (this.cur.type === TokenType.VOID) {
+                this.idx++;
+                continue;
+            }
+
             const expr = this.parseExpression();
             if (expr.code !== PartialExitCode.SUCCESS) return expr;
 
