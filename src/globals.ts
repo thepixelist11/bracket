@@ -5,7 +5,8 @@ import { Evaluator } from "./evaluator.js";
 import { Output } from "./utils.js";
 
 export const VERSION_NUMBER = `0.0.1` as const;
-export const WELCOME_MESSAGE = `Welcome to Bracket v${VERSION_NUMBER}.` as const;
+export const LANG_NAME = `Bracket` as const;
+export const WELCOME_MESSAGE = `Welcome to ${LANG_NAME} v${VERSION_NUMBER}.` as const;
 export const GOODBYE_MESSAGE = `Goodbye.` as const;
 export const TEMP_ENVIRONMENT_LABEL = "TMP" as const;
 export const REPL_ENVIRONMENT_LABEL = "REPL" as const;
@@ -20,6 +21,8 @@ export const REPL_LOAD_COMMANDS_FROM_HIST = true as const;
 export const REPL_AUTOCOMPLETE = false as const;
 export const REPL_AUTOCOMPLETE_GHOST_COLOR = 238 as const;
 export const REPL_HIST_APPEND_ERRORS = true as const;
+export const REPL_APROPOS_MAX_LINE_LENGTH = 78 as const;
+export const REPL_COMMAND_CORRECTION_MAX_DISTANCE = 3 as const;
 
 export let STDOUT = new Output({ forward_to: process.stdout });
 
@@ -136,3 +139,10 @@ export const enum PartialExitCode {
     ERROR,
     INCOMPLETE,
 };
+
+export const DEFAULT_HELP_LABEL = "short";
+export const HELP_TOPICS: Record<string, string> = {
+    [DEFAULT_HELP_LABEL]: `
+${LANG_NAME} v${VERSION_NUMBER}
+Default Help Text Here`,
+}

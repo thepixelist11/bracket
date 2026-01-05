@@ -4,9 +4,240 @@ import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
-import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, GOODBYE_MESSAGE, STDOUT } from "./globals.js";
-import { printDeep, Output } from "./utils.js";
+import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, GOODBYE_MESSAGE, STDOUT, LANG_NAME, VERSION_NUMBER, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_APROPOS_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
+import { printDeep, Output, exit, editDistance } from "./utils.js";
 import fs from "fs";
+
+type REPLCommand =
+    ({
+        manual_write: true;
+        fn: (args: string[], stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable) => void
+    } | {
+        manual_write?: false;
+        fn: (args: string[], stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable) => string
+    }) & {
+        dispatch: string;
+        manual_write?: boolean;
+        doc?: string;
+        arg_names?: string[];
+        arg_optional?: boolean[];
+        aliases?: string[];
+    };
+
+class REPLCommandTable {
+    command_ids = new Map<string, number>();
+    commands = new Map<number, REPLCommand>();
+    valid_ids = new Set<number>();
+    private cur_id = 0;
+
+    constructor(commands: REPLCommand[] = []) {
+        for (const c of commands)
+            this.register(c);
+    }
+
+    register(command: REPLCommand) {
+        if (this.command_ids.has(command.dispatch))
+            console.warn(`REPL command ${command.dispatch} already exists; overwriting.`);
+
+        this.command_ids.set(command.dispatch, ++this.cur_id);
+        this.commands.set(this.cur_id, command);
+        this.valid_ids.add(this.cur_id);
+
+        if (command.aliases) {
+            for (const alias of command.aliases) {
+                if (this.command_ids.has(alias))
+                    console.warn(`REPL command ${alias} already exists; overwriting.`);
+
+                this.command_ids.set(alias, this.cur_id);
+            }
+        }
+    }
+
+    run(command: string, stdout: Output, lexer: Lexer, parser: Parser, evaluator: Evaluator, env: BracketEnvironment): void {
+        if (command[0] !== ",")
+            throw new Error("commands must start with ,");
+
+        const [cmd_name, ...args] = command.trim().slice(1).split(" ");
+
+        if (cmd_name.trim() === "")
+            throw new Error("command not specified; use ,help for general help or ,cmds for a list of commands.");
+
+        const cmd_id = this.command_ids.get(cmd_name);
+        const cmd = this.commands.get(cmd_id ?? -1);
+        if (!cmd || !cmd_id) {
+            const candidates = this.nearestCommands(cmd_name, REPL_COMMAND_CORRECTION_MAX_DISTANCE);
+            if (candidates.length === 0)
+                throw new Error(`unknown command: ,${cmd_name}.`);
+            else if (candidates.length === 1)
+                throw new Error(`unknown command: ,${cmd_name}. Did you mean this?\n ,${candidates[0]}`);
+            else
+                throw new Error(`unknown command: ,${cmd_name}. Did you mean one of the following?\n ${candidates
+                    .slice(0, -1)
+                    .map(c => "," + c)
+                    .join(" ")} or ,${candidates.at(-1)}`);
+        }
+
+        const result = cmd.fn(args, stdout, env, evaluator, parser, lexer, this);
+
+        if (!cmd.manual_write) stdout.write("\n" + result);
+    }
+
+    private nearestCommands(cmd: string, max_distance: number): string[] {
+        const candidates = [...this.command_ids.keys()]
+            .map(word => ({ word, dist: editDistance(cmd, word) }));
+        const min_distance = Math.min(...candidates.map(v => v.dist));
+        if (min_distance > max_distance) return [];
+        return candidates
+            .filter(v => v.dist === min_distance)
+            .map(v => v.word);
+    }
+}
+
+const REPL_COMMANDS = new REPLCommandTable([
+    {
+        dispatch: "help",
+        aliases: ["h", "?"],
+        manual_write: true,
+        arg_names: ["topic"],
+        arg_optional: [true],
+        doc: "Provides general help or help for a specific topic.",
+        fn: (args, stdout) => {
+            if (!args[0])
+                stdout.write(HELP_TOPICS[DEFAULT_HELP_LABEL]);
+            else if (!HELP_TOPICS[args[0]])
+                stdout.write(`Help topic was not found: ${args[0]}\n\n` +
+                    HELP_TOPICS[DEFAULT_HELP_LABEL]);
+            else
+                stdout.write(HELP_TOPICS[args[0]]);
+        }
+    },
+    {
+        dispatch: "exit",
+        aliases: ["quit"],
+        manual_write: true,
+        doc: "Exits the REPL.",
+        fn: () => {
+            exit(0);
+        }
+    },
+    {
+        dispatch: "apropos",
+        aliases: ["ap", "/"],
+        doc: "Searches for bound identifiers containing a string.",
+        arg_names: ["search-term"],
+        fn: (args, _, env) => {
+            const bindings = [
+                ...env.bindings.keys(),
+                ...env.builtins.keys()
+            ].filter(s => s.match(args[0])).sort();
+
+            if (bindings.length === 0)
+                return "No matches found.";
+
+            let out = "";
+            let line_len = 0;
+            for (let i = 0; i < bindings.length; i++) {
+                let bind = bindings[i];
+                if (bindings[i].split("").some(ch => Lexer.isIllegalIdentChar(ch)))
+                    bind = `|${bind}|`;
+                bind += (i !== bindings.length - 1 ? ", " : ".");
+
+                line_len += bind.length;
+
+                if (line_len > REPL_APROPOS_MAX_LINE_LENGTH) {
+                    out += "\n";
+                    line_len = 0;
+                }
+
+                out += bind;
+            }
+
+            return out;
+        }
+    },
+    {
+        dispatch: "commands",
+        aliases: ["cmds", ","],
+        doc: "Lists commands and their usage.",
+        fn: (_, _0, _1, _2, _3, _4, table) => {
+            let out = "";
+
+            for (const id of table.valid_ids) {
+                const cmd = table.commands.get(id);
+                if (!cmd) continue;
+
+                const arg_names = cmd.arg_names ?? [];
+                const arg_optional = cmd.arg_optional ?? [];
+
+                out += `${cmd.dispatch}`
+                for (let i = 0; i < arg_names.length; i++) {
+                    if (arg_optional[i])
+                        out += ` <[${arg_names![i]}]>`;
+                    else
+                        out += ` <${arg_names![i]}>`;
+                }
+
+                if (cmd.aliases) out += ` (${cmd.aliases.join(" ")})`;
+                if (cmd.doc) out += `: ${cmd.doc}`;
+                out += "\n";
+            }
+
+            return out;
+        }
+    },
+    {
+        dispatch: "env",
+        doc: "Prints the full top-level Bracket environment",
+        manual_write: true,
+        fn: (_, _0, env) => {
+            function prune(value: unknown, prune_terms = new Set(["builtins", "__builtins", "__stdout"]), seen = new WeakMap()): unknown {
+                if (value && typeof value === "object") {
+                    if (seen.has(value)) {
+                        return seen.get(value);
+                    }
+
+                    let result: any;
+
+                    if (Array.isArray(value)) {
+                        result = [];
+                        seen.set(value, result);
+                        for (const item of value) {
+                            result.push(prune(item, prune_terms, seen));
+                        }
+                    } else if (value instanceof Map) {
+                        result = new Map();
+                        seen.set(value, result);
+                        for (const [k, v] of value.entries()) {
+                            if (prune_terms.has(k)) continue;
+                            result.set(k, prune(v, prune_terms, seen));
+                        }
+                    } else if (value instanceof Set) {
+                        result = new Set();
+                        seen.set(value, result);
+                        for (const v of value) {
+                            result.add(prune(v, prune_terms, seen));
+                        }
+                    } else {
+                        result = {};
+                        seen.set(value, result);
+                        for (const [key, val] of Object.entries(value)) {
+                            if (prune_terms.has(key)) continue;
+                            result[key] = prune(val, prune_terms, seen);
+                        }
+                    }
+
+                    return result;
+                }
+
+                return value;
+            }
+
+            const pruned = prune(env);
+            STDOUT.write("\n");
+            printDeep(pruned);
+        }
+    },
+])
 
 const enum KeyPress {
     ETX = "\u0003",
@@ -30,12 +261,12 @@ export function REPL(use_hist = true) {
     process.stdin.setEncoding("utf8");
     process.stdin.resume();
 
-    process.on("SIGINT", exit.bind(null, { exit: true }));
-    process.on("SIGUSR1", exit.bind(null, { exit: true }));
-    process.on("SIGUSR2", exit.bind(null, { exit: true }));
+    process.on("SIGINT", exit);
+    process.on("SIGUSR1", exit);
+    process.on("SIGUSR2", exit);
     process.on("uncaughtException", err => {
         console.error(err);
-        exit({ exit: true }, 1);
+        exit(1);
     });
 
     let buffer: string[] = [""];
@@ -54,6 +285,16 @@ export function REPL(use_hist = true) {
     const e = new Evaluator();
 
     const repl_stdout = new Output();
+    const command_stdout = new Output({
+        forward_to: repl_stdout,
+        chunk_fn: (c) => {
+            const lines = c.trimEnd().split("\n");
+            if (lines[0].trim() === "")
+                return "\n" + lines.slice(1).map(l => "; " + l).join("\n");
+            else
+                return lines.map(l => "; " + l).join("\n");
+        }
+    });
     const env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, undefined, repl_stdout);
 
     function insertChar(ch: string): void {
@@ -172,22 +413,6 @@ export function REPL(use_hist = true) {
         return ret;
     }
 
-    function restoreTerminal(): void {
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-            process.stdin.pause();
-        }
-    }
-
-    function exit(options?: { exit: boolean }, code = 0): void {
-        if ((!options || options.exit) && code === 0 && REPL_BANNER_ENABLED) {
-            STDOUT.write(`\n${GOODBYE_MESSAGE}\n`);
-        }
-
-        restoreTerminal();
-        if (options?.exit) process.exit(code);
-    }
-
     function commitBuffer(): void {
         const input = buffer.join("\n");
         let final_result: Token = TokenVoid();
@@ -198,43 +423,58 @@ export function REPL(use_hist = true) {
             return;
         }
 
-        const before_count = env.stdout.write_count;
+        if (input[0] === ",") {
+            try {
+                REPL_COMMANDS.run(input, command_stdout, l, p, e, env);
+                if (REPL_SAVE_COMMANDS_TO_HIST)
+                    appendREPLHistory([input]);
+            } catch (err) {
+                env.stdout.write("\n" + ((err as any).message ?? String(err)));
+                if (REPL_HIST_APPEND_ERRORS && REPL_SAVE_COMMANDS_TO_HIST)
+                    appendREPLHistory([input]);
+            } finally {
+                env.stdout.write("\n");
+                stdoutFlush();
+            }
+        } else {
+            const before_count = env.stdout.write_count;
 
-        const { result, code, ast } = evaluate(input);
+            const { result, code, ast } = evaluate(input);
 
-        switch (code) {
-            case PartialExitCode.SUCCESS:
-                final_result = result;
-                break;
-            case PartialExitCode.ERROR:
-                final_result = result;
-                break;
-            case PartialExitCode.INCOMPLETE:
-                insertChar("\n");
-                render();
-                return;
-        }
+            switch (code) {
+                case PartialExitCode.SUCCESS:
+                    final_result = result;
+                    break;
+                case PartialExitCode.ERROR:
+                    final_result = result;
+                    break;
+                case PartialExitCode.INCOMPLETE:
+                    insertChar("\n");
+                    render();
+                    return;
+            }
 
-        STDOUT.write("\n");
-
-        stdoutFlush();
-
-        REPLRunWithVerbosity(2, () => {
-            printDeep(ast);
-        });
-
-        REPLRunWithVerbosity(1, () => {
-            printDeep(final_result);
-        });
-
-        if (final_result.type !== TokenType.EOF && final_result.type !== TokenType.VOID) {
-            STDOUT.write(final_result.toString());
-        }
-
-        const wrote_output = env.stdout.write_count !== before_count;
-
-        if (wrote_output || (final_result && final_result.type !== TokenType.VOID && final_result.type !== TokenType.EOF))
             STDOUT.write("\n");
+
+            stdoutFlush();
+
+            REPLRunWithVerbosity(2, () => {
+                printDeep(ast);
+            });
+
+            REPLRunWithVerbosity(1, () => {
+                printDeep(final_result);
+            });
+
+            if (final_result.type !== TokenType.EOF && final_result.type !== TokenType.VOID) {
+                STDOUT.write(final_result.toString());
+            }
+
+            const wrote_output = env.stdout.write_count !== before_count;
+
+            if (wrote_output || (final_result && final_result.type !== TokenType.VOID && final_result.type !== TokenType.EOF))
+                STDOUT.write("\n");
+        }
 
         buffer = [""];
         temp_hist_buffers.clear();
@@ -381,7 +621,7 @@ export function REPL(use_hist = true) {
 
         if (isEnd(key_str)) {
             if (buffer[cursor_line].length === 0) {
-                exit({ exit: true }, 0);
+                exit(0);
             } else {
                 temp_hist_buffers.set(-1, [""]);
                 current_hist = -1;
