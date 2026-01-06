@@ -6,9 +6,9 @@ import { BracketEnvironment } from "./env.js";
 export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
 
 export type BuiltinFunction =
-    ({ constant: true } & { value: Token }) |
-    ({ constant?: false } & (
-        ({ special: true } & { special_fn: (args: ASTNode[], env: BracketEnvironment) => Token }) |
+    ({ constant: true } & { value: Token, doc?: string }) |
+    (({ constant?: false } & (
+        ({ special: true } & { special_fn: (args: ASTNode[], env: BracketEnvironment, meta: TokenMetadata) => Token }) |
         ({ special?: false } &
             ({ macro: true } & {
                 expander: MacroExpander,
@@ -21,16 +21,16 @@ export type BuiltinFunction =
                 env_param?: boolean,
             }) & {
                 min_args: number,
-                variadic?: boolean,
-                arg_names?: string[],
                 arg_predicates?: ((v: any) => boolean)[],
                 error_messsage?: string,
-                source_name?: string,
-                doc?: string,
                 pure?: boolean,
                 constant_fold?: boolean,
                 memoize?: boolean,
-            })));
+            })))) & {
+                variadic?: boolean,
+                arg_names?: string[],
+                doc?: string,
+            };
 
 export class Evaluator {
     evaluate(ast: ASTNode, env?: BracketEnvironment): Token {
@@ -46,7 +46,9 @@ export class Evaluator {
 
         for (const form of program.forms) {
             const result = this.evaluate(form, env);
-            if (result.type !== TokenType.EOF && result.type !== TokenType.VOID) {
+            if (result.type !== TokenType.EOF &&
+                result.type !== TokenType.VOID &&
+                result.type !== TokenType.META) {
                 last = result;
 
                 if (print_intermediate) {
@@ -75,7 +77,7 @@ export class Evaluator {
                         return builtin.value.withPos(ast.tok.meta.row, ast.tok.meta.col);
 
                     if (builtin.special)
-                        return builtin.special_fn([], env);
+                        return builtin.special_fn([], env, ast.meta);
 
                     return ast.tok;
                 } else {
@@ -108,7 +110,7 @@ export class Evaluator {
                 throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
 
             if (builtin.special)
-                return builtin.special_fn(node.rest, env);
+                return builtin.special_fn(node.rest, env, op.meta);
 
             if (builtin.macro === true)
                 throw new Error(`${op.literal}: macro appeared in runtime evaluation`);

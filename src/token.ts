@@ -4,7 +4,7 @@ import { ASTProcedureNode } from "./ast.js";
 
 export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
 
-export interface TokenMetadata { row: number, col: number }
+export interface TokenMetadata { row: number, col: number, [key: string]: string | number }
 
 export class Token {
     constructor(
@@ -93,7 +93,10 @@ export const enum TokenType {
     LIST,
     QUOTE,
     FORM,
+    META,
 };
+
+export type TokenMetadataInjector = { meta: { [key: string]: string | number }, pred?: (tok: Token) => boolean };
 
 function defaultMeta(meta: Partial<TokenMetadata> = {}): TokenMetadata { return { row: meta.row ?? -1, col: meta.col ?? -1 }; }
 export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, defaultMeta(meta)) };
@@ -110,6 +113,7 @@ export function TokenChar(char: string, meta?: TokenMetadata) { return new Token
 export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), proc) };
 export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
 export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), val) };
+export function TokenMeta(injector: TokenMetadataInjector, meta?: TokenMetadata) { return new Token(TokenType.META, "", defaultMeta(meta), injector) };
 
 export type ValueType =
     | TokenType.ANY

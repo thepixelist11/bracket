@@ -1,10 +1,12 @@
-import { Token, TokenList, TokenType } from "./token.js";
+import { Token, TokenList, TokenMetadata, TokenMetadataInjector, TokenType, TokenVoid } from "./token.js";
 import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./globals.js";
 import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError, ASTProgram } from "./ast.js";
+import { printDeep } from "./utils.js";
 
 export class Parser {
     private toks: Token[] = [];
     private idx: number = 0;
+    private meta_injector_stack: TokenMetadataInjector[] = [];
 
     private get cur() { return this.toks[this.idx] ?? undefined; }
 
@@ -44,6 +46,14 @@ export class Parser {
         switch (this.cur.type as any) {
             case TokenType.LPAREN: {
                 return this.parseSExpr();
+            }
+
+            case TokenType.META: {
+                this.injectMetadata();
+                return {
+                    result: new ASTLiteralNode(TokenVoid()),
+                    code: PartialExitCode.SUCCESS
+                };
             }
 
             case TokenType.QUOTE: {
@@ -104,12 +114,29 @@ export class Parser {
             default: {
                 const tok = this.cur;
                 this.idx++;
+
+                if (tok.type !== TokenType.LPAREN && tok.type !== TokenType.RPAREN) {
+                    for (let i = 0; i < this.meta_injector_stack.length; i++) {
+                        const injector = this.meta_injector_stack[i];
+                        if (!injector.pred || injector.pred(tok)) {
+                            tok.meta = { ...tok.meta, ...injector.meta };
+                            this.meta_injector_stack.splice(i--, 1);
+                        }
+                    }
+                }
+
                 return {
                     result: new ASTLiteralNode(tok),
                     code: PartialExitCode.SUCCESS,
                 }
             }
         }
+    }
+
+    private injectMetadata() {
+        const injector = this.cur.value as TokenMetadataInjector;
+        this.meta_injector_stack.push(injector);
+        this.idx++;
     }
 
     private parseSExpr(): { result: ASTNode, code: PartialExitCode } {
@@ -138,6 +165,11 @@ export class Parser {
 
             if (this.cur.type === TokenType.VOID) {
                 this.idx++;
+                continue;
+            }
+
+            if (this.cur.type === TokenType.META) {
+                this.injectMetadata();
                 continue;
             }
 

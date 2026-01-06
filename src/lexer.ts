@@ -1,5 +1,6 @@
 import { CHAR_TOK_MAP, PartialExitCode, RPAREN_TYPE_MAP, PAREN_TYPE_MAP } from "./globals.js";
-import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen } from "./token.js";
+import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta } from "./token.js";
+import { printDeep } from "./utils.js";
 
 export type ReaderContext = {
     file_directives: Map<string, any>;
@@ -116,7 +117,7 @@ function readNForms(
     return { forms, code: PartialExitCode.SUCCESS };
 }
 
-const READER_MACROS = new ReaderMacroTable([
+const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
     {
         dispatch: "t",
         cursor: "prefix",
@@ -173,6 +174,39 @@ const READER_MACROS = new ReaderMacroTable([
                 result: TokenVoid(lexer.makeMeta(start)),
                 code: PartialExitCode.SUCCESS
             };
+        }
+    },
+    {
+        dispatch: "meta",
+        cursor: "prefix",
+        produces: TokenType.VOID,
+        fn: (lexer, start) => {
+            const res = readNForms(lexer, 2);
+            if ("result" in res) return res;
+
+            const [key, value] = res.forms.map(f => f[0]);
+
+            if (key.type !== TokenType.IDENT) {
+                return {
+                    result: TokenError("expected #meta <key> <value>; expected key to be an ident"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (value.type !== TokenType.STR && value.type !== TokenType.NUM) {
+                return {
+                    result: TokenError("expected #meta <key> <value>; expected key to be a string or a number"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            lexer.skipWhitespace();
+            lexer.skipComment();
+
+            if (value.type === TokenType.STR)
+                return { result: TokenMeta({ meta: { [key.literal]: value.literal } }, start), code: PartialExitCode.SUCCESS };
+            else
+                return { result: TokenMeta({ meta: { [key.literal]: parseFloat(value.literal) } }, start), code: PartialExitCode.SUCCESS };
         }
     },
     {

@@ -1,6 +1,6 @@
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, STDOUT } from "./globals.js";
-import { Output } from "./utils.js";
+import { Output, printDeep } from "./utils.js";
 import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js"
 import { Evaluator } from "./evaluator.js";

@@ -9,9 +9,9 @@ export class ASTLiteralNode implements ASTBase {
     public tok: Token;
     public meta: TokenMetadata;
 
-    constructor(tok: Token) {
+    constructor(tok: Token, meta?: TokenMetadata) {
         this.tok = tok;
-        this.meta = tok.meta;
+        this.meta = meta ?? tok.meta;
     }
 }
 

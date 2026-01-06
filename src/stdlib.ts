@@ -1,14 +1,14 @@
 import { BuiltinFunction } from "./evaluator.js";
-import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE } from "./token.js";
+import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata } from "./token.js";
 import { TOKEN_PRINT_TYPE_MAP } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
 
 export const STDLIB = new Map<string, BuiltinFunction>([
-    ["+", { fn: (...args) => args.length === 0 ? 0 : args.reduce((acc, v) => acc + v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 0, variadic: true, pure: true }],
-    ["-", { fn: (...args) => args.length === 1 ? -args[0] : args.reduce((acc, v) => acc - v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["*", { fn: (...args) => args.length === 0 ? 1 : args.reduce((acc, v) => acc * v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 0, variadic: true, pure: true }],
+    ["+", { fn: (...args) => args.length === 0 ? 0 : args.reduce((acc, v) => acc + v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 0, variadic: true, pure: true, doc: "Adds numbers from left to right.", arg_names: ["nums"] }],
+    ["-", { fn: (...args) => args.length === 1 ? -args[0] : args.reduce((acc, v) => acc - v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Subtracts numbers from left to right", arg_names: ["nums"] }],
+    ["*", { fn: (...args) => args.length === 0 ? 1 : args.reduce((acc, v) => acc * v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 0, variadic: true, pure: true, doc: "Multiplies numbers from left to right", arg_names: ["nums"] }],
     ["/", {
         fn: (...args) => {
             if (args.length === 1) {
@@ -27,7 +27,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.NUM],
         min_args: 1,
         variadic: true,
-        pure: true
+        pure: true,
+        doc: "Divides numbers from left to right.",
+        arg_names: ["nums"]
     }],
     ["quotient", {
         fn: (a, b) => {
@@ -38,7 +40,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.NUM,
         arg_type: [TokenType.NUM, TokenType.NUM],
         min_args: 2,
-        pure: true
+        pure: true,
+        doc: "Produces the result of the integer division of a and b. That is, a/b truncated to an integer.",
+        arg_names: ["a", "b"]
     }],
     ["remainder", {
         fn: (a, b) => {
@@ -49,26 +53,28 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.NUM,
         arg_type: [TokenType.NUM, TokenType.NUM],
         min_args: 2,
-        pure: true
+        pure: true,
+        doc: "Produces the remainder when a is divided by b with the same sign as a.",
+        arg_names: ["a", "b"]
     }],
-    ["expt", { fn: (a, b) => a ** b, ret_type: TokenType.NUM, arg_type: [TokenType.NUM, TokenType.NUM], min_args: 2, pure: true }],
-    ["exp", { fn: (x) => Math.exp(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["log", { fn: (a, b) => Math.log(a) / Math.log(b ?? Math.E), ret_type: TokenType.NUM, arg_type: [TokenType.NUM, TokenType.NUM], min_args: 1, variadic: true, pure: true }], // TODO: Allow for max args
-    ["sin", { fn: (x) => Math.sin(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["cos", { fn: (x) => Math.cos(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["tan", { fn: (x) => Math.tan(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["asin", { fn: (x) => Math.asin(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["acos", { fn: (x) => Math.acos(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["atan", { fn: (x) => Math.atan(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["sqr", { fn: (x) => x * x, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["sqrt", { fn: (x) => Math.sqrt(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["cbrt", { fn: (x) => Math.cbrt(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["<", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] < v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["<=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] <= v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    [">", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] > v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    [">=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] >= v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] === v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["not", { fn: (x) => (x.type === TokenType.BOOL && x.literal === BOOL_FALSE), ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, pure: true, raw: ["token"] }],
+    ["expt", { fn: (a, b) => a ** b, ret_type: TokenType.NUM, arg_type: [TokenType.NUM, TokenType.NUM], min_args: 2, pure: true, doc: "Produces the result of a^b.", arg_names: ["a", "b"] }],
+    ["exp", { fn: (x) => Math.exp(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the result of e^x.", arg_names: ["x"] }],
+    ["log", { fn: (a, b) => Math.log(a) / Math.log(b ?? Math.E), ret_type: TokenType.NUM, arg_type: [TokenType.NUM, TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces the result of ln(a) if b is not specified, and log_b(a) if b is specified.", arg_names: ["a", "[b]"] }], // TODO: Allow for max args
+    ["sin", { fn: (x) => Math.sin(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the sine of x.", arg_names: ["x"] }],
+    ["cos", { fn: (x) => Math.cos(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the cosine of x.", arg_names: ["x"] }],
+    ["tan", { fn: (x) => Math.tan(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the tangent of x.", arg_names: ["x"] }],
+    ["asin", { fn: (x) => Math.asin(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the arcsine of x.", arg_names: ["x"] }],
+    ["acos", { fn: (x) => Math.acos(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the arccosine of x.", arg_names: ["x"] }],
+    ["atan", { fn: (x) => Math.atan(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the arctangent of x.", arg_names: ["x"] }],
+    ["sqr", { fn: (x) => x * x, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the square of x.", arg_names: ["x"] }],
+    ["sqrt", { fn: (x) => Math.sqrt(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the square root of x.", arg_names: ["x"] }],
+    ["cbrt", { fn: (x) => Math.cbrt(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the cube root of x.", arg_names: ["x"] }],
+    ["<", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] < v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces true if the arguments are in strictly increasing order.", arg_names: ["args"] }],
+    ["<=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] <= v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces true if the arguments are in non-decreasing order.", arg_names: ["args"] }],
+    [">", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] > v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces true if the arguments are in strictly decreasing order.", arg_names: ["args"] }],
+    [">=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] >= v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces true if the arguments are in non-increasing order.", arg_names: ["args"] }],
+    ["=", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] === v), ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces true if the arguments are all numerically equal.", arg_names: ["nums"] }],
+    ["not", { fn: (x) => (x.type === TokenType.BOOL && x.literal === BOOL_FALSE), ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, pure: true, raw: ["token"], doc: "Produces true if x is false; otherwise produces false.", arg_names: ["x"] }],
     ["xor", {
         fn: (a, b) => {
             if (
@@ -81,7 +87,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.ANY, TokenType.ANY],
         min_args: 2,
         pure: true,
-        raw: ["token", "token"]
+        raw: ["token", "token"],
+        doc: "Produces true if exactly one of a or b is not false.",
+        arg_names: ["a", "b"]
     }],
     ["and", {
         macro: true,
@@ -99,7 +107,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ),
                 ASTBool(false),
             );
-        }
+        },
+        doc: "Evaluates expressions from left to right and produces the first false value, or the last value if none are false. Short-circuits.",
+        arg_names: ["args"]
     }],
     ["or", {
         macro: true,
@@ -117,7 +127,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                     ...args.slice(1)
                 ),
             );
-        }
+        },
+        doc: "Evaluates expressions from left to right and produces the first non-false value, or the true if none are false. Short-circuits.",
+        arg_names: ["args"]
     }],
     ["when", {
         macro: true,
@@ -130,7 +142,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ...args.slice(1),
                 ASTVoid(),
             );
-        }
+        },
+        doc: "Evaluates the body expressions when the test expression is not false; otherwise produces void.",
+        arg_names: ["test", "bodies"]
     }],
     ["unless", {
         macro: true,
@@ -146,7 +160,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ...args.slice(1),
                 ASTVoid(),
             );
-        }
+        },
+        doc: "Evaluates the body expressions when the test expression is false; otherwise produces void.",
+        arg_names: ["test", "bodies"]
     }],
     ["cond", {
         macro: true,
@@ -183,7 +199,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                     ...rest,
                 ) : ASTVoid(),
             )
-        }
+        },
+        doc: "Evaluates test-value clauses in order and produces the value of the first clause who's test is not false. An else clause matches unconditionally.",
+        arg_names: ["test-value-pairs"]
     }],
     ["begin", {
         macro: true,
@@ -201,6 +219,8 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ),
             );
         },
+        doc: "Evaluates expressions in order and produces the value of the last expression.",
+        arg_names: ["bodies"]
     }],
     ["local", {
         macro: true,
@@ -228,7 +248,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ...definitions,
                 ...bodies
             );
-        }
+        },
+        doc: "Introduces local definitions only visible within the body expressions.",
+        arg_names: ["definition-sequence", "bodies"]
     }],
     ["let", {
         macro: true,
@@ -269,7 +291,10 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 ),
                 ...values,
             );
-        }
+        },
+        doc: "Binds identifiers to values and evaluates the body expressions with those bindings.",
+        arg_names: ["bindings", "bodies"]
+
     }],
     ["print", {
         fn: (env, val) => {
@@ -280,7 +305,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.VOID,
         raw: ["token"],
         pure: false,
-        env_param: true
+        env_param: true,
+        doc: "Writes the textual representation of a value to the standard output.",
+        arg_names: ["value"]
     }],
     ["println", {
         fn: (env, val) => {
@@ -291,7 +318,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.VOID,
         raw: ["token"],
         pure: false,
-        env_param: true
+        env_param: true,
+        doc: "Writes the textual representation of a value to the standard output with a trailing newline.",
+        arg_names: ["value"]
     }],
     ["display", { // FIXME: Chars and strings should print literally. Do not print unprintable characters
         fn: (env, val) => {
@@ -317,7 +346,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.VOID,
         raw: ["token"],
         pure: false,
-        env_param: true
+        env_param: true,
+        doc: "Writes the literal value or a representation of the value if unprintable to the standard output.",
+        arg_names: ["value"]
     }],
     ["displayln", {
         fn: (env, val) => {
@@ -343,43 +374,47 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.VOID,
         raw: ["token"],
         pure: false,
-        env_param: true
+        env_param: true,
+        doc: "Writes the literal value or a representation of the value if unprintable to the standard output with a trailing newline.",
+        arg_names: ["value"]
     }],
     ["set!", {
         special: true,
         special_fn: evalSet,
+        doc: "Mutates an existing binding to refer to a new value.",
+        arg_names: ["ident", "value"]
     }],
-    ["else", { fn: () => { throw new Error("else: not allowed as an expression") }, ret_type: TokenType.ERROR, arg_type: [TokenType.ANY], min_args: 0, variadic: true }],
-    ["if", { special: true, special_fn: evalIf }],
-    ["define", { special: true, special_fn: evalDefine }],
-    ["lambda", { special: true, special_fn: evalLambda }],
-    ["λ", { special: true, special_fn: evalLambda }],
-    ["abs", { fn: (x) => Math.abs(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["floor", { fn: (x) => Math.floor(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["ceiling", { fn: (x) => Math.ceil(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["round", { fn: (x) => Math.round(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["truncate", { fn: (x) => Math.trunc(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["positive?", { fn: (x) => x > 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["negative?", { fn: (x) => x < 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["max", { fn: (...args) => { let m = null; for (const a of args) m = m ? Math.max(a, m) : a; return m }, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["min", { fn: (...args) => { let m = null; for (const a of args) m = m ? Math.min(a, m) : a; return m }, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true }],
-    ["zero?", { fn: (x) => x === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["even?", { fn: (x) => x % 2 === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["add1", { fn: (x) => x + 1, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["odd?", { fn: (x) => x % 2 === 1, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["sub1", { fn: (x) => x - 1, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true }],
-    ["identity", { fn: (x) => x, ret_type: TokenType.ANY, arg_type: [TokenType.ANY], min_args: 1, pure: true }],
-    ["symbol?", { fn: (x) => x.type === TokenType.SYM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["number?", { fn: (x) => x.type === TokenType.NUM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["string?", { fn: (x) => x.type === TokenType.STR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["char?", { fn: (x) => x.type === TokenType.CHAR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["boolean?", { fn: (x) => x.type === TokenType.BOOL, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["list?", { fn: (x) => x.type === TokenType.LIST, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true }],
-    ["string->symbol", { fn: (x) => x, ret_type: TokenType.SYM, arg_type: [TokenType.STR], min_args: 1, pure: true }],
-    ["symbol->string", { fn: (x) => x, ret_type: TokenType.STR, arg_type: [TokenType.SYM], min_args: 1, pure: true }],
-    ["string-length", { fn: (x) => x.length, ret_type: TokenType.NUM, arg_type: [TokenType.STR], min_args: 1, pure: true }],
-    ["string-ref", { fn: (x, i) => { if (i < x.length) return x[i]; else throw new Error("string-ref: index is out of range") }, ret_type: TokenType.CHAR, arg_type: [TokenType.STR, TokenType.NUM], min_args: 2, pure: true }],
-    ["string-append", { fn: (...args) => ["", ...args].reduce((acc, cur) => acc + cur), ret_type: TokenType.STR, arg_type: [TokenType.STR], min_args: 0, variadic: true, pure: true }],
+    ["else", { fn: () => { throw new Error("else: not allowed as an expression") }, ret_type: TokenType.ERROR, arg_type: [TokenType.ANY], min_args: 0, variadic: true, doc: "For use with cond." }],
+    ["if", { special: true, special_fn: evalIf, doc: "Evaluates the test expression and evaluates the `if` branch if not false and the `then` branch otherwise.", arg_names: ["test", "if", "then"] }],
+    ["define", { special: true, special_fn: evalDefine, doc: "Binds a value to an identifier in the current environment.", arg_names: ["ident", "value"] }],
+    ["lambda", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
+    ["λ", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
+    ["abs", { fn: (x) => Math.abs(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the absolute value of x.", arg_names: ["x"] }],
+    ["floor", { fn: (x) => Math.floor(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produes the greatest integer less than or equal to x.", arg_names: ["x"] }],
+    ["ceiling", { fn: (x) => Math.ceil(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the smallest integer greater than or equal to x.", arg_names: ["x"] }],
+    ["round", { fn: (x) => Math.round(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces the nearest integer to x.", arg_names: ["x"] }],
+    ["truncate", { fn: (x) => Math.trunc(x), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces x truncated towards 0.", arg_names: ["x"] }],
+    ["positive?", { fn: (x) => x > 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces true if x is strictly positive.", arg_names: ["x"] }],
+    ["negative?", { fn: (x) => x < 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces true if x is strictly negative.", arg_names: ["x"] }],
+    ["max", { fn: (...args) => { let m = null; for (const a of args) m = m ? Math.max(a, m) : a; return m }, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces the largest of the given numbers.", arg_names: ["nums"] }],
+    ["min", { fn: (...args) => { let m = null; for (const a of args) m = m ? Math.min(a, m) : a; return m }, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, variadic: true, pure: true, doc: "Produces the smallest of the given numbers.", arg_names: ["nums"] }],
+    ["zero?", { fn: (x) => x === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces true if x is zero.", arg_names: ["x"] }],
+    ["even?", { fn: (x) => x % 2 === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces true if x is even.", arg_names: ["x"] }],
+    ["odd?", { fn: (x) => x % 2 === 1, ret_type: TokenType.BOOL, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces true if x is odd.", arg_names: ["x"] }],
+    ["add1", { fn: (x) => x + 1, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces x plus 1.", arg_names: ["x"] }],
+    ["sub1", { fn: (x) => x - 1, ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 1, pure: true, doc: "Produces x minus 1.", arg_names: ["x"] }],
+    ["identity", { fn: (x) => x, ret_type: TokenType.ANY, arg_type: [TokenType.ANY], min_args: 1, pure: true, doc: "Produces its argument unchanged.", arg_names: ["x"] }],
+    ["symbol?", { fn: (x) => x.type === TokenType.SYM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a symbol.", arg_names: ["x"] }],
+    ["number?", { fn: (x) => x.type === TokenType.NUM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a number.", arg_names: ["x"] }],
+    ["string?", { fn: (x) => x.type === TokenType.STR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a string.", arg_names: ["x"] }],
+    ["char?", { fn: (x) => x.type === TokenType.CHAR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a char.", arg_names: ["x"] }],
+    ["boolean?", { fn: (x) => x.type === TokenType.BOOL, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a boolean.", arg_names: ["x"] }],
+    ["list?", { fn: (x) => x.type === TokenType.LIST, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a list.", arg_names: ["x"] }],
+    ["string->symbol", { fn: (x) => x, ret_type: TokenType.SYM, arg_type: [TokenType.STR], min_args: 1, pure: true, doc: "Converts a string to a symbol.", arg_names: ["str"] }],
+    ["symbol->string", { fn: (x) => x, ret_type: TokenType.STR, arg_type: [TokenType.SYM], min_args: 1, pure: true, doc: "Converts a symbol to a string.", arg_names: ["sym"] }],
+    ["string-length", { fn: (x) => x.length, ret_type: TokenType.NUM, arg_type: [TokenType.STR], min_args: 1, pure: true, doc: "Produces the length of a string in characters.", arg_names: ["str"] }],
+    ["string-ref", { fn: (x, i) => { if (i < x.length) return x[i]; else throw new Error("string-ref: index is out of range") }, ret_type: TokenType.CHAR, arg_type: [TokenType.STR, TokenType.NUM], min_args: 2, pure: true, doc: "Produces the character at position i in a string.", arg_names: ["str", "i"] }],
+    ["string-append", { fn: (...args) => ["", ...args].reduce((acc, cur) => acc + cur), ret_type: TokenType.STR, arg_type: [TokenType.STR], min_args: 0, variadic: true, pure: true, doc: "Concatenates strings from left to right.", arg_names: ["strs"] }],
     ["substring", {
         fn: (str, s, e) => {
             if (s > str.length)
@@ -395,40 +430,42 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.STR, TokenType.NUM, TokenType.NUM],
         min_args: 2,
         variadic: true,
-        pure: true
+        pure: true,
+        doc: "Produces the substring of str from index s up to, but not including e or the end of the string if e is not defined.",
+        arg_names: ["str", "s", "e"]
     }],
-    ["string=?", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] === v), ret_type: TokenType.BOOL, arg_type: [TokenType.STR], min_args: 1, variadic: true, pure: true }],
-    ["pi", { constant: true, value: TokenNum(3.141592653589793) }],
-    ["true", { constant: true, value: TokenBool(true) }],
-    ["false", { constant: true, value: TokenBool(false) }],
-    ["list", { fn: (...args) => [...args], ret_type: TokenType.LIST, arg_type: [TokenType.ANY], variadic: true, min_args: 0, pure: true }],
-    ["pair?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
-    ["cons?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
-    ["null?", { fn: (x) => x.type === TokenType.LIST && x.value.length === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
-    ["empty?", { fn: (x) => x.type === TokenType.LIST && x.value.length === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1 }],
-    ["cons", { fn: (a, d) => [a, ...d], ret_type: TokenType.LIST, arg_type: [TokenType.ANY, TokenType.LIST], pure: true, min_args: 2 }],
-    ["empty", { constant: true, value: TokenList([]) }],
-    ["null", { constant: true, value: TokenList([]) }],
-    ["car", { fn: (p) => { if (p.length > 0) return p[0]; else throw new Error(`car: expected a pair`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["first", { fn: (p) => { if (p.length > 0) return p[0]; else throw new Error(`first: expected a list of at least 1 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["second", { fn: (p) => { if (p.length > 1) return p[1]; else throw new Error(`second: expected a list of at least 2 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["third", { fn: (p) => { if (p.length > 2) return p[2]; else throw new Error(`third: expected a list of at least 3 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["fourth", { fn: (p) => { if (p.length > 3) return p[3]; else throw new Error(`fourth: expected a list of at least 4 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["fifth", { fn: (p) => { if (p.length > 4) return p[4]; else throw new Error(`fifth: expected a list of at least 5 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["sixth", { fn: (p) => { if (p.length > 5) return p[5]; else throw new Error(`sixth: expected a list of at least 6 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["seventh", { fn: (p) => { if (p.length > 6) return p[6]; else throw new Error(`seventh: expected a list of at least 7 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["eighth", { fn: (p) => { if (p.length > 7) return p[7]; else throw new Error(`eighth: expected a list of at least 8 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["ninth", { fn: (p) => { if (p.length > 8) return p[8]; else throw new Error(`ninth: expected a list of at least 9 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["tenth", { fn: (p) => { if (p.length > 9) return p[9]; else throw new Error(`tenth: expected a list of at least 10 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["eleventh", { fn: (p) => { if (p.length > 10) return p[10]; else throw new Error(`eleventh: expected a list of at least 11 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["twelfth", { fn: (p) => { if (p.length > 11) return p[11]; else throw new Error(`twelfth: expected a list of at least 12 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["thirteenth", { fn: (p) => { if (p.length > 12) return p[12]; else throw new Error(`thirteenth: expected a list of at least 13 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["fourteenth", { fn: (p) => { if (p.length > 13) return p[13]; else throw new Error(`fourteenth: expected a list of at least 14 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["fifteenth", { fn: (p) => { if (p.length > 14) return p[14]; else throw new Error(`fifteenth: expected a list of at least 15 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["last", { fn: (p) => { if (p.length > 0) return p.at(-1); else throw new Error(`last: expected a list of at least 1 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["last-pair", { fn: (p) => { if (p.length > 0) return [p.at(-1)]; else throw new Error(`last-pair: expected a list of at least 1 element`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["cdr", { fn: (p) => { if (p.length > 0) return p.slice(1); else throw new Error(`cdr: expected a pair`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["rest", { fn: (p) => { if (p.length > 0) return p.slice(1); else throw new Error(`rest: expected a list of at least 1 element`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
+    ["string=?", { fn: (...args) => args.every((v, i) => i === 0 || args[i - 1] === v), ret_type: TokenType.BOOL, arg_type: [TokenType.STR], min_args: 1, variadic: true, pure: true, doc: "Produces true if all strings are equal.", arg_names: ["strs"] }],
+    ["pi", { constant: true, value: TokenNum(3.141592653589793), doc: "The mathematical constant π." }],
+    ["true", { constant: true, value: TokenBool(true), doc: "The boolean value true." }],
+    ["false", { constant: true, value: TokenBool(false), doc: "The boolean value false." }],
+    ["list", { fn: (...args) => [...args], ret_type: TokenType.LIST, arg_type: [TokenType.ANY], variadic: true, min_args: 0, pure: true, doc: "Produces a list containing the given arguments", arg_names: ["elems"] }],
+    ["pair?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1, doc: "Produces true if x is a non-empty list.", arg_names: ["x"] }],
+    ["cons?", { fn: (x) => x.type === TokenType.LIST && x.value.length >= 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1, doc: "Produces true if x is a non-empty list.", arg_names: ["x"] }],
+    ["null?", { fn: (x) => x.type === TokenType.LIST && x.value.length === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1, doc: "Produces true if x is the empty list.", arg_names: ["x"] }],
+    ["empty?", { fn: (x) => x.type === TokenType.LIST && x.value.length === 0, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], pure: true, min_args: 1, doc: "Produces true if x is the empty list.", arg_names: ["x"] }],
+    ["cons", { fn: (a, d) => [a, ...d], ret_type: TokenType.LIST, arg_type: [TokenType.ANY, TokenType.LIST], pure: true, min_args: 2, doc: "Produces a new list by prepending an element to a list.", arg_names: ["elem", "list"] }],
+    ["empty", { constant: true, value: TokenList([]), doc: "The empty list." }],
+    ["null", { constant: true, value: TokenList([]), doc: "The empty list." }],
+    ["car", { fn: (p) => { if (p.length > 0) return p[0]; else throw new Error(`car: expected a pair`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the first value in a pair.", arg_names: ["pair"] }],
+    ["first", { fn: (p) => { if (p.length > 0) return p[0]; else throw new Error(`first: expected a list of at least 1 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the first value of a non-empty list.", arg_names: ["list"] }],
+    ["second", { fn: (p) => { if (p.length > 1) return p[1]; else throw new Error(`second: expected a list of at least 2 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the second value of a non-empty list.", arg_names: ["list"] }],
+    ["third", { fn: (p) => { if (p.length > 2) return p[2]; else throw new Error(`third: expected a list of at least 3 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the third value of a non-empty list.", arg_names: ["list"] }],
+    ["fourth", { fn: (p) => { if (p.length > 3) return p[3]; else throw new Error(`fourth: expected a list of at least 4 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the fourth value of a non-empty list.", arg_names: ["list"] }],
+    ["fifth", { fn: (p) => { if (p.length > 4) return p[4]; else throw new Error(`fifth: expected a list of at least 5 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the fifth value of a non-empty list.", arg_names: ["list"] }],
+    ["sixth", { fn: (p) => { if (p.length > 5) return p[5]; else throw new Error(`sixth: expected a list of at least 6 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the sixth value of a non-empty list.", arg_names: ["list"] }],
+    ["seventh", { fn: (p) => { if (p.length > 6) return p[6]; else throw new Error(`seventh: expected a list of at least 7 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the seventh value of a non-empty list.", arg_names: ["list"] }],
+    ["eighth", { fn: (p) => { if (p.length > 7) return p[7]; else throw new Error(`eighth: expected a list of at least 8 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the eighth value of a non-empty list.", arg_names: ["list"] }],
+    ["ninth", { fn: (p) => { if (p.length > 8) return p[8]; else throw new Error(`ninth: expected a list of at least 9 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the ninth value of a non-empty list.", arg_names: ["list"] }],
+    ["tenth", { fn: (p) => { if (p.length > 9) return p[9]; else throw new Error(`tenth: expected a list of at least 10 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the tenth value of a non-empty list.", arg_names: ["list"] }],
+    ["eleventh", { fn: (p) => { if (p.length > 10) return p[10]; else throw new Error(`eleventh: expected a list of at least 11 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the eleventh value of a non-empty list.", arg_names: ["list"] }],
+    ["twelfth", { fn: (p) => { if (p.length > 11) return p[11]; else throw new Error(`twelfth: expected a list of at least 12 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the twelfth value of a non-empty list.", arg_names: ["list"] }],
+    ["thirteenth", { fn: (p) => { if (p.length > 12) return p[12]; else throw new Error(`thirteenth: expected a list of at least 13 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the thirteenth value of a non-empty list.", arg_names: ["list"] }],
+    ["fourteenth", { fn: (p) => { if (p.length > 13) return p[13]; else throw new Error(`fourteenth: expected a list of at least 14 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the fourteenth value of a non-empty list.", arg_names: ["list"] }],
+    ["fifteenth", { fn: (p) => { if (p.length > 14) return p[14]; else throw new Error(`fifteenth: expected a list of at least 15 elements`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the fifteenth value of a non-empty list.", arg_names: ["list"] }],
+    ["last", { fn: (p) => { if (p.length > 0) return p.at(-1); else throw new Error(`last: expected a list of at least 1 element`) }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the last value of a non-empty list.", arg_names: ["list"] }],
+    ["last-pair", { fn: (p) => { if (p.length > 0) return [p.at(-1)]; else throw new Error(`last-pair: expected a list of at least 1 element`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the last pair of a non-empty list.", arg_names: ["list"] }],
+    ["cdr", { fn: (p) => { if (p.length > 0) return p.slice(1); else throw new Error(`cdr: expected a pair`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the second item in a pair.", arg_names: ["pair"] }],
+    ["rest", { fn: (p) => { if (p.length > 0) return p.slice(1); else throw new Error(`rest: expected a list of at least 1 element`) }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces everything after the first element in a list.", arg_names: ["list"] }],
     ["build-list", {
         fn: (n, proc) => {
             if (n < 0) throw new Error(`build-list: expected a non-negative integer, got ${n}`);
@@ -442,7 +479,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.LIST,
         arg_type: [TokenType.NUM, TokenType.PROCEDURE],
         pure: true,
-        min_args: 2
+        min_args: 2,
+        doc: "Produces a list of length n by applying a procedure to all indices from 0 to n - 1.",
+        arg_names: ["n", "proc"]
     }],
     ["make-list", {
         fn: (n, v) => {
@@ -458,7 +497,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.NUM, TokenType.ANY],
         pure: true,
         min_args: 2,
-        raw: ["normal", "token"]
+        raw: ["normal", "token"],
+        doc: "Produces a list of length n with each element equal to v.",
+        arg_names: ["n", "v"]
     }],
     ["list-update", {
         fn: (lst, pos, updater) => {
@@ -474,6 +515,8 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.LIST, TokenType.NUM, TokenType.PROCEDURE],
         pure: true,
         min_args: 3,
+        doc: "Produces a list with the element at pos replaced by the result of applying updater to that element.",
+        arg_names: ["list", "pos", "updater"]
     }],
     ["list-set", {
         fn: (lst, pos, val) => {
@@ -489,14 +532,16 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.LIST, TokenType.NUM, TokenType.ANY],
         pure: true,
         min_args: 3,
-        raw: ["normal", "normal", "token"]
+        raw: ["normal", "normal", "token"],
+        doc: "Produces a list with the element at pos replaced by val.",
+        arg_names: ["list", "pos", "val"]
     }],
-    ["length", { fn: (lst) => lst.length, ret_type: TokenType.NUM, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
-    ["list-ref", { fn: (lst, pos) => { if (pos >= 0 && pos < lst.length) return lst[pos]; else throw new Error("list-ref: index out of range") }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST, TokenType.NUM], pure: true, min_args: 2 }],
+    ["length", { fn: (lst) => lst.length, ret_type: TokenType.NUM, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces the number of elements in a list.", arg_names: ["list"] }],
+    ["list-ref", { fn: (lst, pos) => { if (pos >= 0 && pos < lst.length) return lst[pos]; else throw new Error("list-ref: index out of range") }, ret_type: TokenType.ANY, arg_type: [TokenType.LIST, TokenType.NUM], pure: true, min_args: 2, doc: "Produces the element at index i in a list.", arg_names: ["list", "i"] }],
     // FIXME: The lst argument must start with a chain of at least pos pairs, it does not need to be a list.
-    ["list-tail", { fn: (lst, pos) => { if (pos >= 0 && pos < lst.length) return lst.slice(pos); else throw new Error("list-tail: index out of range") }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST, TokenType.NUM], pure: true, min_args: 2 }],
-    ["append", { fn: (...lsts) => [...lsts].flat(1), ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, variadic: true, min_args: 0 }],
-    ["reverse", { fn: (lst) => [...lst].reverse(), ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1 }],
+    ["list-tail", { fn: (lst, pos) => { if (pos >= 0 && pos < lst.length) return lst.slice(pos); else throw new Error("list-tail: index out of range") }, ret_type: TokenType.LIST, arg_type: [TokenType.LIST, TokenType.NUM], pure: true, min_args: 2, doc: "Produces the sublist starting at index i.", arg_names: ["list", "i"] }],
+    ["append", { fn: (...lsts) => [...lsts].flat(1), ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, variadic: true, min_args: 0, doc: "Concatenates lists from left to right.", arg_names: ["lists"] }],
+    ["reverse", { fn: (lst) => [...lst].reverse(), ret_type: TokenType.LIST, arg_type: [TokenType.LIST], pure: true, min_args: 1, doc: "Produces a list with the elements in reverse order.", arg_names: ["list"] }],
     ["map", {
         fn: (proc, ...lsts) => {
             const elem_count = lsts[0].length;
@@ -516,10 +561,12 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Applies a procedure element-wise to one or more lists and produces a list of results. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "lists"]
     }],
     ["andmap", {
-        fn: (proc, ...lsts) => {
+        fn: (pred, ...lsts) => {
             const elem_count = lsts[0].length;
 
             if (lsts.some(l => l.length !== elem_count))
@@ -527,7 +574,7 @@ export const STDLIB = new Map<string, BuiltinFunction>([
 
             for (let i = 0; i < elem_count; i++) {
                 const args = lsts.map(l => l[i]);
-                const result = proc(...args);
+                const result = pred(...args);
                 if (result.type === TokenType.BOOL && result.literal === BOOL_FALSE)
                     return TokenBool(false);
 
@@ -541,10 +588,12 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Applies a predicate element-wise and produces false on the first false result; otherwise produces the last result. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["pred", "lists"]
     }],
     ["ormap", {
-        fn: (proc, ...lsts) => {
+        fn: (pred, ...lsts) => {
             const elem_count = lsts[0].length;
 
             if (lsts.some(l => l.length !== elem_count))
@@ -552,7 +601,7 @@ export const STDLIB = new Map<string, BuiltinFunction>([
 
             for (let i = 0; i < elem_count; i++) {
                 const args = lsts.map(l => l[i]);
-                const result = proc(...args);
+                const result = pred(...args);
                 if (result.type === TokenType.BOOL && result.literal === BOOL_FALSE)
                     continue;
 
@@ -565,7 +614,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Applies a predicate element-wise and produces true on the first non-false result; otherwise produces false. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["pred", "lists"]
     }],
     ["for-each", {
         fn: (proc, ...lsts) => {
@@ -585,7 +636,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Applies a procedure element-wise for side effects and produces void. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "lists"]
     }],
     ["foldl", {
         fn: (proc, init, ...lsts) => {
@@ -607,7 +660,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.ANY, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Reduces lists from left to right using a combining procedure and an initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "init", "lists"]
     }],
     ["foldr", {
         fn: (proc, init, ...lsts) => {
@@ -629,7 +684,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.ANY, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Reduces lists from right to left using a combining procedure and an initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "init", "lists"]
     }],
     ["running-foldl", {
         fn: (proc, init, ...lsts) => {
@@ -653,7 +710,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.ANY, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Produces a list of intermediate left-fold results, including the initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "init", "lists"]
     }],
     ["running-foldr", {
         fn: (proc, init, ...lsts) => {
@@ -677,7 +736,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         arg_type: [TokenType.PROCEDURE, TokenType.ANY, TokenType.LIST],
         variadic: true,
         pure: true,
-        min_args: 1
+        min_args: 1,
+        doc: "Produces a list of intermediate right-fold results, including the initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.",
+        arg_names: ["proc", "init", "lists"]
     }],
     ["filter", {
         fn: (pred, lst) => {
@@ -693,7 +754,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         ret_type: TokenType.LIST,
         arg_type: [TokenType.PROCEDURE, TokenType.LIST],
         pure: true,
-        min_args: 2
+        min_args: 2,
+        doc: "Produces a list of elements for which the predicate produces true.",
+        arg_names: ["pred", "list"]
     }],
     ["swap!", {
         macro: true,
@@ -708,7 +771,9 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 new ASTSExprNode(ASTIdent("set!"), a, b),
                 new ASTSExprNode(ASTIdent("set!"), b, ASTIdent("tmp")),
             );
-        }
+        },
+        doc: "Exchanges the values of two mutable bindings.",
+        arg_names: ["a", "b"]
     }],
 ]);
 
@@ -748,7 +813,7 @@ function evalSet(args: ASTNode[], env: BracketEnvironment): Token {
     return TokenVoid();
 }
 
-function evalDefine(args: ASTNode[], env: BracketEnvironment): Token {
+function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadata): Token {
     if (args.length === 0) throw new Error("define: bad syntax; no arguments provided");
     if (args.length === 1) throw new Error("define: bad syntax; missing expression after identifier");
 
@@ -762,7 +827,7 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment): Token {
         if (final_value.type === TokenType.ERROR)
             throw new Error(final_value.literal);
 
-        env.define(ident.tok.literal, new ASTLiteralNode(final_value));
+        env.define(ident.tok.literal, new ASTLiteralNode(final_value, meta));
     } else if (ident instanceof ASTSExprNode) {
         if (ident.elements.length === 0)
             throw new Error(`define: bad syntax; no function name or arguments provided`);
@@ -778,7 +843,7 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment): Token {
 
         const procedure = new ASTProcedureNode(name, params, body_nodes, env);
         const proc_token = TokenProc(procedure);
-        const proc_literal = new ASTLiteralNode(proc_token);
+        const proc_literal = new ASTLiteralNode(proc_token, meta);
 
         procedure.closure.define(name, proc_literal);
 

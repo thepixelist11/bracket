@@ -4,7 +4,7 @@ import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
-import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, GOODBYE_MESSAGE, STDOUT, LANG_NAME, VERSION_NUMBER, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_APROPOS_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
+import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_APROPOS_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
 import { printDeep, Output, exit, editDistance } from "./utils.js";
 import fs from "fs";
 
@@ -23,6 +23,17 @@ type REPLCommand =
         arg_optional?: boolean[];
         aliases?: string[];
     };
+
+function generateDocumentation(name: string, doc: string = "", is_procedure: boolean = false, arg_names: string[] = [], variadic: boolean = false, bound_to: Token = TokenVoid()) {
+    let out = "";
+    if (is_procedure) {
+        out += `${name}: (${[name, ...arg_names.slice(0, -1), (arg_names.at(-1) ?? "") + (variadic ? "..." : "")].join(" ")})`;
+    } else {
+        out += `${name}: ${bound_to.toString()}`;
+    }
+    if (doc !== "") out += `\n${doc}`;
+    return out;
+}
 
 class REPLCommandTable {
     command_ids = new Map<string, number>();
@@ -53,6 +64,7 @@ class REPLCommandTable {
         }
     }
 
+    // TODO: Currently, we cannot use strings like |this is a test| as a parameter.
     run(command: string, stdout: Output, lexer: Lexer, parser: Parser, evaluator: Evaluator, env: BracketEnvironment): void {
         if (command[0] !== ",")
             throw new Error("commands must start with ,");
@@ -153,6 +165,82 @@ const REPL_COMMANDS = new REPLCommandTable([
             }
 
             return out;
+        }
+    },
+    {
+        dispatch: "doc",
+        doc: "Reads the documentation, if any, for a bound identifier.",
+        arg_names: ["ident"],
+        fn: (args, _, env) => {
+            if (args.length === 0) return `No identifier specified. Usage: ,doc <ident>`;
+
+            const ident = args[0];
+            let doc: string;
+            let is_procedure: boolean;
+            let arg_names: string[];
+            let variadic: boolean;
+            let bound_to = TokenVoid();
+
+            if (ident === "") return `No identifier specified. Usage: ,doc <ident>`;
+
+            const all_bindings = [
+                ...env.bindings.keys(),
+                ...env.builtins.keys(),
+            ];
+
+            if (env.bindings.has(ident)) {
+                const bound = env.bindings.get(ident)!;
+                if (!(bound instanceof ASTLiteralNode))
+                    return `Identifier bound to non-literal/procedure node. Unable to get documentation.`;
+
+                if (bound.tok.type === TokenType.PROCEDURE) {
+                    doc = (bound.meta?.doc ?? "").toString();
+                    variadic = false;
+                    arg_names = (bound.tok.value as { params: string[] }).params;
+                    is_procedure = true;
+                } else {
+                    doc = (bound.meta?.doc ?? "").toString();
+                    variadic = false;
+                    arg_names = [];
+                    is_procedure = false;
+                    bound_to = bound.tok;
+                }
+            } else if (env.builtins.has(ident)) {
+                const builtin = env.builtins.get(ident)!;
+                doc = builtin.doc ?? "";
+
+                if (builtin?.constant) {
+                    variadic = false;
+                    arg_names = [];
+                    is_procedure = false;
+                    bound_to = builtin.value;
+                } else if (builtin?.special) {
+                    variadic = false;
+                    arg_names = ["special_function"]; // TODO:
+                    is_procedure = true;
+                } else {
+                    variadic = builtin.variadic ?? false;
+                    arg_names = builtin.arg_names ?? (variadic
+                        ? [...Array.from({ length: (builtin.min_args ?? 1) - 1 }, (_, i) => `arg${i}`), "args"]
+                        : Array.from({ length: builtin.min_args ?? 0 }, (_, i) => `arg${i}`));
+                    is_procedure = true;
+                }
+            } else {
+                let cmds: string[] = [];
+
+                const candidates = [...all_bindings]
+                    .map(word => ({ word, dist: editDistance(ident, word) }));
+                const min_distance = Math.min(...candidates.map(v => v.dist));
+                if (min_distance <= REPL_COMMAND_CORRECTION_MAX_DISTANCE)
+                    cmds = candidates.filter(v => v.dist === min_distance)
+                        .map(v => v.word);
+
+                if (candidates.length === 0) return `${ident} is undefined.`;
+                if (candidates.length === 1) return `${ident} is undefined. Did you mean this?\n${cmds[0]}`;
+                return `${ident} is undefined. Did you mean one of these?\n${cmds.join(" ")}`;
+            }
+
+            return generateDocumentation(ident, doc, is_procedure, arg_names, variadic, bound_to);
         }
     },
     {
