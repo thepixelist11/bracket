@@ -1,23 +1,32 @@
 import { ASTNode } from "./ast.js";
-import { STDOUT } from "./globals.js";
+import { InterpreterContext, STDOUT } from "./globals.js";
 import { BuiltinFunction } from "./evaluator.js";
 import { Output } from "./utils.js";
-import { STDLIB } from "./stdlib.js";
+import { BRACKET_BUILTINS, Builtins } from "./stdlib.js";
 
 export class BracketEnvironment {
     private readonly __parent?: BracketEnvironment;
     private readonly __label: string;
     private readonly __stdout: Output;
+    private readonly __ctx: InterpreterContext;
     private __bindings: Map<string, ASTNode> = new Map();
-    private __builtins: Map<string, BuiltinFunction> = STDLIB;
+    private __builtins: Builtins;
 
-    constructor(label: string, parent?: BracketEnvironment, stdout: Output = STDOUT) {
+    constructor(label: string, ctx: InterpreterContext, parent?: BracketEnvironment, stdout: Output = STDOUT) {
         this.__label = label;
         this.__parent = parent;
         this.__stdout = stdout;
 
+        this.__ctx = ctx;
+
         if (this.parent && this.parent.stdout)
             this.__stdout = this.parent.stdout;
+
+        if (!this.parent) {
+            this.__builtins = BRACKET_BUILTINS;
+        } else {
+            this.__builtins = this.parent!.builtins;
+        }
     }
 
     get label_raw() { return this.__label; }
@@ -27,6 +36,7 @@ export class BracketEnvironment {
     get parent() { return this.__parent; }
     get builtins() { return this.__builtins; }
     get stdout() { return this.__stdout; }
+    get ctx() { return this.__ctx; }
 
     define(ident: string, node: ASTNode) {
         return this.__bindings.set(ident, node);
@@ -53,7 +63,7 @@ export class BracketEnvironment {
     }
 
     static copy(env: BracketEnvironment) {
-        const cp = new BracketEnvironment(env.label_raw, env.__parent);
+        const cp = new BracketEnvironment(env.label_raw, env.__ctx, env.__parent);
         cp.__bindings = new Map(env.bindings);
 
         return cp;

@@ -1,5 +1,46 @@
-import { CHAR_TOK_MAP, PartialExitCode, RPAREN_TYPE_MAP, PAREN_TYPE_MAP, LANG_NAME, VERSION_NUMBER, getDefaultReaderFeatures, InterpreterContext, FD_LANGUAGE, FD_SHEBANG } from "./globals.js";
+import { PartialExitCode, LANG_NAME, VERSION_NUMBER, getDefaultReaderFeatures, InterpreterContext, FD_LANGUAGE, FD_SHEBANG } from "./globals.js";
 import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta, TokenForm } from "./token.js";
+
+export const enum ParenType {
+    PAREN,
+    BRACKET,
+    BRACE
+};
+
+export const EOF_CHAR = "$" as const;
+
+export const CHAR_TOK_MAP: Record<string, TokenType> = {
+    "(": TokenType.LPAREN,
+    "[": TokenType.LPAREN,
+    "{": TokenType.LPAREN,
+
+    ")": TokenType.RPAREN,
+    "]": TokenType.RPAREN,
+    "}": TokenType.RPAREN,
+} as const;
+
+export const PAREN_TYPE_MAP: Record<string, ParenType> = {
+    "(": ParenType.PAREN,
+    ")": ParenType.PAREN,
+
+    "[": ParenType.BRACKET,
+    "]": ParenType.BRACKET,
+
+    "{": ParenType.BRACE,
+    "}": ParenType.BRACE,
+} as const;
+
+export const LPAREN_TYPE_MAP: Record<ParenType, string> = {
+    [ParenType.PAREN]: "(",
+    [ParenType.BRACKET]: "[",
+    [ParenType.BRACE]: "{",
+} as const;
+
+export const RPAREN_TYPE_MAP: Record<ParenType, string> = {
+    [ParenType.PAREN]: ")",
+    [ParenType.BRACKET]: "]",
+    [ParenType.BRACE]: "}",
+} as const;
 
 export type ReaderMacro = {
     dispatch: string;

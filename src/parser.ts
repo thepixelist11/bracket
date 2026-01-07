@@ -1,6 +1,7 @@
 import { Token, TokenList, TokenMetadataInjector, TokenType, TokenVoid } from "./token.js";
-import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
+import { PartialExitCode, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError, ASTProgram } from "./ast.js";
+import { PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./lexer.js";
 
 export class Parser {
     private toks: Token[] = [];

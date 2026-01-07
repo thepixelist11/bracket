@@ -4,7 +4,7 @@ import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode, ASTToSourceCode } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
-import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
+import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE, FEAT_IO, FEAT_REPL, FEAT_SYS_EXEC } from "./globals.js";
 import { printDeep, Output, exit, editDistance } from "./utils.js";
 import { runFile } from "./run_file.js";
 import fs from "fs";
@@ -26,7 +26,7 @@ type REPLCommand =
         aliases?: string[];
     };
 
-function generateDocumentation(name: string, doc: string = "", is_procedure: boolean = false, arg_names: string[] = [], variadic: boolean = false, bound_to: Token = TokenVoid()) {
+function generateDocumentation(name: string, doc: string = "", is_procedure: boolean = false, arg_names: string[] = [], variadic: boolean = false, bound_to: Token = TokenVoid(), imported_by: string) {
     let out = "";
     if (is_procedure) {
         if (arg_names.length === 0 && variadic === false)
@@ -37,13 +37,34 @@ function generateDocumentation(name: string, doc: string = "", is_procedure: boo
         out += `${name}: ${bound_to.toString()}`;
     }
     if (doc !== "") out += `\n${doc}`;
+    if (imported_by !== "") out += `\n\nImported by: ${imported_by}`;
     return out;
 }
 
 function wrapLines(str: string, max_len: number = REPL_COMMAND_MAX_LINE_LENGTH) {
-    const pattern = new RegExp(`(?=\\S).{0,${max_len - 1}}\\S(?!\\S)|\\S{${max_len}}`, 'gm')
-    return Array.from(str.matchAll(pattern), (m) => m[0]).join("\n");
+    if (str === "\n") return "\n";
+
+    const pattern = new RegExp(`\\n|[^\\n]{1,${max_len}}(?=\\s|$)|[^\\n]{${max_len}}`, "g");
+
+    let result = "";
+    let first = true;
+
+    for (const m of str.matchAll(pattern)) {
+        const chunk = m[0];
+
+        if (chunk === "\n") {
+            result += "\n";
+            first = true;
+        } else {
+            if (!first) result += "\n";
+            result += chunk;
+            first = false;
+        }
+    }
+
+    return result;
 }
+
 
 class REPLCommandTable {
     command_ids = new Map<string, number>();
@@ -167,8 +188,8 @@ const REPL_COMMANDS = new REPLCommandTable([
     {
         dispatch: "source",
         aliases: ["so", "inspect"],
-        arg_names: ["ident"], // TODO: Detect known macros like `and` and `or`
-        doc: "Outputs the post-macro-expansion source code of the object bound to an identifier.",
+        arg_names: ["ident"],
+        doc: "Outputs the post-macro-expansion source code of the object bound to an identifier. This will attempt to resolve expanded macros to the original source if possible.",
         fn: (args, ctx) => {
             const { env } = ctx;
 
@@ -347,7 +368,7 @@ const REPL_COMMANDS = new REPLCommandTable([
             let line_len = 0;
             for (let i = 0; i < bindings.length; i++) {
                 let bind = bindings[i];
-                if (bindings[i].split("").some(ch => Lexer.isIllegalIdentChar(ch)))
+                if (bindings[i].split("").some(ch => Lexer.isWhitespace(ch)))
                     bind = `|${bind}|`;
                 bind += (i !== bindings.length - 1 ? ", " : ".");
 
@@ -374,6 +395,7 @@ const REPL_COMMANDS = new REPLCommandTable([
             let arg_names: string[];
             let variadic: boolean;
             let bound_to = TokenVoid();
+            let imported_by = "";
 
             if (ident === "") return `No identifier specified. Usage: ,doc <ident>`;
 
@@ -402,6 +424,8 @@ const REPL_COMMANDS = new REPLCommandTable([
             } else if (env.builtins.has(ident)) {
                 const builtin = env.builtins.get(ident)!;
                 doc = builtin.doc ?? "";
+
+                imported_by = env.builtins.associations.get(ident) ?? "";
 
                 if (builtin?.constant) {
                     variadic = false;
@@ -434,7 +458,7 @@ const REPL_COMMANDS = new REPLCommandTable([
                 return `${ident} is undefined. Did you mean one of these?\n${cmds.join(" ")}`;
             }
 
-            return generateDocumentation(ident, doc, is_procedure, arg_names, variadic, bound_to);
+            return generateDocumentation(ident, doc, is_procedure, arg_names, variadic, bound_to, imported_by);
         }
     },
     {
@@ -545,9 +569,10 @@ export class REPL {
         public use_hist: boolean = true
     ) {
         this.hist = this.use_hist ? this.loadREPLHistory() : [];
-        this.l = new Lexer(["repl"]);
+        this.l = new Lexer([FEAT_REPL, FEAT_IO, FEAT_SYS_EXEC]);
         this.p = new Parser(this.l.ctx.features, this.l.ctx.file_directives);
         this.e = new Evaluator(this.l.ctx.features, this.l.ctx.file_directives);
+        this.env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, this.l.ctx, undefined, this.repl_stdout);
     }
 
     start() {
@@ -697,18 +722,19 @@ export class REPL {
     p: Parser;
     e: Evaluator;
 
+    env: BracketEnvironment;
+
     repl_stdout = new Output();
     command_stdout = new Output({
         forward_to: this.repl_stdout,
         chunk_fn: (c) => {
-            const lines = ("\n" + wrapLines(c.trimEnd())).split("\n");
+            const lines = (wrapLines(c.trimEnd())).split("\n");
             if (lines[0].trim() === "")
                 return "\n" + lines.slice(1).map(l => "; " + l).join("\n");
             else
                 return lines.map(l => "; " + l).join("\n");
         }
     });
-    env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, undefined, this.repl_stdout);
 
     insertChar(ch: string): void {
         if (ch === "\n") {

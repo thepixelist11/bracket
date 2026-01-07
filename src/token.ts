@@ -1,8 +1,28 @@
-import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP, TOKEN_PRINT_TYPE_MAP } from "./globals.js";
+import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./lexer.js";
 import { Lexer } from "./lexer.js";
 import { ASTProcedureNode } from "./ast.js";
 
 export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
+
+export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
+    [TokenType.ANY]: "Any",
+    [TokenType.NUM]: "Num",
+    [TokenType.SYM]: "Sym",
+    [TokenType.BOOL]: "Bool",
+    [TokenType.STR]: "Str",
+    [TokenType.CHAR]: "Char",
+    [TokenType.VOID]: "Void",
+    [TokenType.ERROR]: "Err",
+    [TokenType.EOF]: "EOF",
+    [TokenType.LPAREN]: "LP",
+    [TokenType.RPAREN]: "RP",
+    [TokenType.IDENT]: "Ident",
+    [TokenType.PROCEDURE]: "Procedure",
+    [TokenType.LIST]: "List",
+    [TokenType.QUOTE]: "Quote",
+    [TokenType.FORM]: "Form",
+    [TokenType.META]: "Meta",
+} as const;
 
 export interface TokenMetadata { row: number, col: number, [key: string]: string | number }
 

@@ -1,8 +1,5 @@
 import path from "path";
 import os from "os";
-import { TokenType, Token, ValueType, BOOL_FALSE, BOOL_TRUE } from "./token.js";
-import { BracketEnvironment } from "./env.js";
-import { Evaluator } from "./evaluator.js";
 import { Output } from "./utils.js";
 
 export const VERSION_NUMBER = `0.0.1` as const;
@@ -71,7 +68,7 @@ export const FEAT_GC_CONSERVATIVE = "gc:conservative" as const;
 
 export const FEAT_IO = "io" as const;
 export const FEAT_LOAD = "load" as const;
-export const FEAT_EVAL = "eval" as const;
+export const FEAT_SYS_EXEC = "sys-exec" as const;
 export const FEAT_FFI = "ffi" as const;
 export const FEAT_SANDBOXED = "sandboxed" as const;
 
@@ -87,11 +84,12 @@ export const FEAT_DEFAULTS: Map<string, string[]> = new Map([
         FEAT_COMMENTS_BLOCK,
         FEAT_COMMENTS_NESTED,
         FEAT_COMMENTS_DATUM,
-        FEAT_IO,
         FEAT_IMPL_NAME(LANG_NAME),
         FEAT_IMPL_VERSION(VERSION_NUMBER),
     ]]
-])
+]);
+
+export const BUILTIN_CUSTOM_SET = "__custom" as const;
 
 export function getDefaultReaderFeatures(lang: string, version: string) {
     const feats: string[] = [...FEAT_DEFAULTS.get(`${lang}@${version}`) ?? []];
@@ -108,121 +106,12 @@ export function getDefaultReaderFeatures(lang: string, version: string) {
     return feats;
 }
 
+export let STDOUT = new Output({ forward_to: process.stdout });
+
 export type InterpreterContext = {
     file_directives: Map<string, any>;
     features: Set<string>;
 };
-
-export let STDOUT = new Output({ forward_to: process.stdout });
-
-export const enum ParenType {
-    PAREN,
-    BRACKET,
-    BRACE
-};
-
-export const EOF_CHAR = "$" as const;
-
-export const CHAR_TOK_MAP: Record<string, TokenType> = {
-    "(": TokenType.LPAREN,
-    "[": TokenType.LPAREN,
-    "{": TokenType.LPAREN,
-
-    ")": TokenType.RPAREN,
-    "]": TokenType.RPAREN,
-    "}": TokenType.RPAREN,
-} as const;
-
-export const PAREN_TYPE_MAP: Record<string, ParenType> = {
-    "(": ParenType.PAREN,
-    ")": ParenType.PAREN,
-
-    "[": ParenType.BRACKET,
-    "]": ParenType.BRACKET,
-
-    "{": ParenType.BRACE,
-    "}": ParenType.BRACE,
-} as const;
-
-export const LPAREN_TYPE_MAP: Record<ParenType, string> = {
-    [ParenType.PAREN]: "(",
-    [ParenType.BRACKET]: "[",
-    [ParenType.BRACE]: "{",
-} as const;
-
-export const RPAREN_TYPE_MAP: Record<ParenType, string> = {
-    [ParenType.PAREN]: ")",
-    [ParenType.BRACKET]: "]",
-    [ParenType.BRACE]: "}",
-} as const;
-
-export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
-    [TokenType.ANY]: "Any",
-    [TokenType.NUM]: "Num",
-    [TokenType.SYM]: "Sym",
-    [TokenType.BOOL]: "Bool",
-    [TokenType.STR]: "Str",
-    [TokenType.CHAR]: "Char",
-    [TokenType.VOID]: "Void",
-    [TokenType.ERROR]: "Err",
-    [TokenType.EOF]: "EOF",
-    [TokenType.LPAREN]: "LP",
-    [TokenType.RPAREN]: "RP",
-    [TokenType.IDENT]: "Ident",
-    [TokenType.PROCEDURE]: "Procedure",
-    [TokenType.LIST]: "List",
-    [TokenType.QUOTE]: "Quote",
-    [TokenType.FORM]: "Form",
-    [TokenType.META]: "Meta",
-} as const;
-
-export const JS_PRINT_TYPE_MAP: Record<string, string> = {
-    "number": "Num",
-    "string": "Str",
-    "boolean": "Bool",
-} as const;
-
-export const ARGUMENT_TYPE_COERCION: Record<ValueType, (tok: Token, env?: BracketEnvironment) => any> = {
-    [TokenType.NUM]: (tok: Token) => parseFloat(tok.literal),
-    [TokenType.STR]: (tok: Token) => tok.literal,
-    [TokenType.CHAR]: (tok: Token) => tok.literal,
-    [TokenType.SYM]: (tok: Token) => tok.literal,
-    [TokenType.BOOL]: (tok: Token) => tok.literal === BOOL_TRUE,
-    [TokenType.ANY]: (tok: Token) => tok,
-    [TokenType.ERROR]: (tok: Token) => tok,
-    [TokenType.VOID]: (tok: Token) => tok,
-    [TokenType.IDENT]: (tok: Token) => tok,
-    [TokenType.PROCEDURE]: (tok: Token, env?: BracketEnvironment) => Evaluator.procedureToJS(tok, env!),
-    [TokenType.LIST]: (tok: Token) => tok.value,
-} as const;
-
-export const RETURN_TYPE_COERCION: Record<ValueType, (result: any) => string> = {
-    [TokenType.NUM]: (result: any) => result.toString(),
-    [TokenType.STR]: (result: any) => result,
-    [TokenType.CHAR]: (result: any) => result,
-    [TokenType.SYM]: (result: any) => result,
-    [TokenType.BOOL]: (result: any) => result ? BOOL_TRUE : BOOL_FALSE,
-    [TokenType.ANY]: (result: any) => result,
-    [TokenType.ERROR]: (result: any) => result,
-    [TokenType.VOID]: (result: any) => result,
-    [TokenType.IDENT]: (result: any) => result,
-    [TokenType.PROCEDURE]: (result: any) => result,
-    [TokenType.LIST]: (result: any) => result,
-} as const;
-
-export const VALUE_TYPE_JS_TYPE_MAP: Record<ValueType, string> = {
-    [TokenType.ANY]: "undefined",
-    [TokenType.NUM]: "number",
-    [TokenType.STR]: "string",
-    [TokenType.BOOL]: "boolean",
-    [TokenType.SYM]: "string",
-    [TokenType.CHAR]: "string",
-    [TokenType.ERROR]: "object",
-    [TokenType.VOID]: "undefined",
-    [TokenType.IDENT]: "string",
-    [TokenType.PROCEDURE]: "object",
-    [TokenType.LIST]: "object",
-} as const;
 
 export const enum PartialExitCode {
     SUCCESS,
@@ -236,3 +125,6 @@ export const HELP_TOPICS: Record<string, string> = {
 ${LANG_NAME} v${VERSION_NUMBER}
 Default Help Text Here`,
 }
+
+export const BOOL_TRUE = "#t" as const,
+    BOOL_FALSE = "#f" as const;

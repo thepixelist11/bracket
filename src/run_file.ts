@@ -20,7 +20,7 @@ export function runFile(filepath: string, env?: BracketEnvironment, stdout?: Out
     const rel_fp = path.relative(".", fp);
 
     const env_stdout = stdout ?? env?.stdout ?? new Output();
-    if (!env) env = new BracketEnvironment(rel_fp, undefined, env_stdout);
+    if (!env) env = new BracketEnvironment(rel_fp, { features: new Set(), file_directives: new Map() }, undefined, env_stdout);
 
     const contents = fs.readFileSync(fp, "utf8");
 

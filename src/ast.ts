@@ -1,6 +1,7 @@
 import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE } from "./token.js";
 import { BracketEnvironment } from "./env.js";
 import { Lexer } from "./lexer.js";
+import { printDeep } from "./utils.js";
 
 interface ASTBase {
     meta?: TokenMetadata;
@@ -45,7 +46,7 @@ export class ASTProcedureNode implements ASTBase {
     constructor(name: string, params: string[], body: ASTNode[], env: BracketEnvironment) {
         this.params = params;
         this.body = body;
-        this.closure = new BracketEnvironment(name, env);
+        this.closure = new BracketEnvironment(name, env.ctx, env);
         this.closure.define(name, ASTVoid(this.meta));
     }
 }
@@ -220,6 +221,8 @@ function unexpandAnd(ast: ASTSExprNode): string[] | false {
     const test2 = ast.elements[2];
     const final = ast.elements[3];
 
+    if (if_node.meta?.__macro && if_node.meta.__macro !== "and") return false;
+
     let params: string[] = [];
 
     if (!(if_node instanceof ASTLiteralNode) ||
@@ -252,6 +255,8 @@ function unexpandOr(ast: ASTSExprNode): string[] | false {
     const test = ast.elements[1];
     const true_node = ast.elements[2];
     const final = ast.elements[3];
+
+    if (if_node.meta?.__macro && if_node.meta.__macro !== "or") return false;
 
     let params: string[] = [];
 
@@ -294,6 +299,8 @@ function unexpandWhen(ast: ASTSExprNode): string[] | false {
     const test = ast.elements[1];
     const then = ast.elements[2];
     const void_node = ast.elements[3];
+
+    if (if_node.meta?.__macro && if_node.meta.__macro !== "when") return false;
 
     let params: string[] = [];
 
