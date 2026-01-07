@@ -2,19 +2,21 @@ import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js";
 import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
-import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
+import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode, ASTToSourceCode } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
-import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_APROPOS_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
+import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE } from "./globals.js";
 import { printDeep, Output, exit, editDistance } from "./utils.js";
+import { runFile } from "./run_file.js";
 import fs from "fs";
 
+type REPLCommandFnContext = { stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable, repl: REPL };
 type REPLCommand =
     ({
         manual_write: true;
-        fn: (args: string[], stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable) => void
+        fn: (args: string[], ctx: REPLCommandFnContext) => void
     } | {
         manual_write?: false;
-        fn: (args: string[], stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable) => string
+        fn: (args: string[], ctx: REPLCommandFnContext) => string
     }) & {
         dispatch: string;
         manual_write?: boolean;
@@ -27,12 +29,20 @@ type REPLCommand =
 function generateDocumentation(name: string, doc: string = "", is_procedure: boolean = false, arg_names: string[] = [], variadic: boolean = false, bound_to: Token = TokenVoid()) {
     let out = "";
     if (is_procedure) {
-        out += `${name}: (${[name, ...arg_names.slice(0, -1), (arg_names.at(-1) ?? "") + (variadic ? "..." : "")].join(" ")})`;
+        if (arg_names.length === 0 && variadic === false)
+            out += `${name}: (${name})`;
+        else
+            out += `${name}: (${[name, ...arg_names.slice(0, -1), (arg_names.at(-1) ?? "") + (variadic ? "..." : "")].join(" ")})`;
     } else {
         out += `${name}: ${bound_to.toString()}`;
     }
     if (doc !== "") out += `\n${doc}`;
     return out;
+}
+
+function wrapLines(str: string, max_len: number = REPL_COMMAND_MAX_LINE_LENGTH) {
+    const pattern = new RegExp(`(?=\\S).{0,${max_len - 1}}\\S(?!\\S)|\\S{${max_len}}`, 'gm')
+    return Array.from(str.matchAll(pattern), (m) => m[0]).join("\n");
 }
 
 class REPLCommandTable {
@@ -65,7 +75,7 @@ class REPLCommandTable {
     }
 
     // TODO: Currently, we cannot use strings like |this is a test| as a parameter.
-    run(command: string, stdout: Output, lexer: Lexer, parser: Parser, evaluator: Evaluator, env: BracketEnvironment): void {
+    run(command: string, stdout: Output, lexer: Lexer, parser: Parser, evaluator: Evaluator, env: BracketEnvironment, repl: REPL): void {
         if (command[0] !== ",")
             throw new Error("commands must start with ,");
 
@@ -89,7 +99,7 @@ class REPLCommandTable {
                     .join(" ")} or ,${candidates.at(-1)}`);
         }
 
-        const result = cmd.fn(args, stdout, env, evaluator, parser, lexer, this);
+        const result = cmd.fn(args, { stdout, env, evaluator, parser, lexer, repl, table: this });
 
         if (!cmd.manual_write) stdout.write("\n" + result);
     }
@@ -113,7 +123,9 @@ const REPL_COMMANDS = new REPLCommandTable([
         arg_names: ["topic"],
         arg_optional: [true],
         doc: "Provides general help or help for a specific topic.",
-        fn: (args, stdout) => {
+        fn: (args, ctx) => {
+            const { stdout } = ctx;
+
             if (!args[0])
                 stdout.write(HELP_TOPICS[DEFAULT_HELP_LABEL]);
             else if (!HELP_TOPICS[args[0]])
@@ -133,11 +145,196 @@ const REPL_COMMANDS = new REPLCommandTable([
         }
     },
     {
+        dispatch: "clear",
+        manual_write: true,
+        doc: "Clears the REPL terminal.",
+        fn: () => {
+            STDOUT.write("\x1bc");
+        }
+    },
+    {
+        dispatch: "load",
+        aliases: ["require", "import"],
+        manual_write: true,
+        arg_names: ["filepath"],
+        doc: "Loads a Bracket file, importing all bindings into the current environment.",
+        fn: (args, ctx) => {
+            const { env, stdout } = ctx;
+
+            runFile(args[0], env, stdout);
+        }
+    },
+    {
+        dispatch: "source",
+        aliases: ["so", "inspect"],
+        arg_names: ["ident"], // TODO: Detect known macros like `and` and `or`
+        doc: "Outputs the post-macro-expansion source code of the object bound to an identifier.",
+        fn: (args, ctx) => {
+            const { env } = ctx;
+
+            if (args.length === 0) return `No identifier specified. Usage: ,source <ident>`;
+
+            const ident = args[0];
+
+            if (ident === "") return `No identifier specified. Usage: ,source <ident>`;
+
+            if (env.bindings.has(ident)) {
+                const bound = env.bindings.get(ident)!;
+
+                return ASTToSourceCode(bound);
+            } else if (env.builtins.has(ident)) {
+                return `${ident}: bound to builtin.`
+
+            } else {
+                let cmds: string[] = [];
+
+                const candidates = [...env.bindings.keys()]
+                    .map(word => ({ word, dist: editDistance(ident, word) }));
+                const min_distance = Math.min(...candidates.map(v => v.dist));
+                if (min_distance <= REPL_COMMAND_CORRECTION_MAX_DISTANCE)
+                    cmds = candidates.filter(v => v.dist === min_distance)
+                        .map(v => v.word);
+
+                if (candidates.length === 0) return `${ident} is undefined.`;
+                if (candidates.length === 1) return `${ident} is undefined. Did you mean this?\n${cmds[0]}`;
+                return `${ident} is undefined. Did you mean one of these?\n${cmds.join(" ")}`;
+            }
+        }
+    },
+    {
+        dispatch: "time",
+        manual_write: true,
+        arg_names: ["expr"],
+        doc: "Runs an expression and logs the total time taken for it to run.",
+        fn: (args, ctx) => {
+            const { repl, env, stdout } = ctx;
+            const expr = args.join(" ");
+
+            let ret: { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram };
+
+            let lex_start_time: number = 0;
+            let parse_start_time: number = 0;
+            let eval_start_time: number = 0;
+
+            let lex_end_time: number = -1;
+            let parse_end_time: number = -1;
+            let eval_end_time: number = -1;
+
+            const before_count = env.stdout.write_count;
+
+            end: do {
+                try {
+                    lex_start_time = performance.now();
+                    const { result: toks, code: lex_code } = repl.l.lex(expr);
+                    lex_end_time = performance.now();
+
+                    if (lex_code !== PartialExitCode.SUCCESS) {
+                        ret = {
+                            result: toks.at(-1) ?? TokenError("lexer error"),
+                            code: lex_code,
+                            ast: new ASTSExprNode()
+                        };
+                        break end;
+                    }
+
+                    parse_start_time = performance.now();
+                    const { result: ast, code: parse_code } = repl.p.parse(toks);
+                    parse_end_time = performance.now();
+
+                    if (parse_code !== PartialExitCode.SUCCESS) {
+                        ret = {
+                            result:
+                                ast instanceof ASTLiteralNode && ast.tok.type === TokenType.ERROR
+                                    ? ast.tok
+                                    : TokenError("parser error"),
+                            code: parse_code,
+                            ast
+                        };
+                        break end;
+                    }
+
+                    if (!(ast instanceof ASTProgram))
+                        throw new Error(`unexpected ASTNode; expected a Program`);
+
+                    eval_start_time = performance.now();
+                    const value = repl.e.evaluateProgram(ast, env, env.stdout, false);
+                    eval_end_time = performance.now();
+
+                    ret = { result: value, code: PartialExitCode.SUCCESS, ast };
+                } catch (err) {
+                    ret = {
+                        result: TokenError(`${env.label} ${((err as any).message ?? String(err))}`),
+                        code: PartialExitCode.ERROR,
+                        ast: new ASTSExprNode()
+                    };
+                }
+            } while (false);
+
+            let final_result: Token;
+
+            switch (ret.code) {
+                case PartialExitCode.SUCCESS:
+                case PartialExitCode.ERROR:
+                    final_result = ret.result;
+                    break;
+                case PartialExitCode.INCOMPLETE:
+                    final_result = TokenVoid();
+                    break;
+            }
+
+
+            const wrote_output = env.stdout.write_count !== before_count;
+
+            if (wrote_output || (final_result && final_result.type !== TokenType.VOID && final_result.type !== TokenType.EOF))
+                env.stdout.write("\n");
+
+            if (final_result.type !== TokenType.EOF && final_result.type !== TokenType.VOID) {
+                env.stdout.write(final_result.toString());
+            }
+
+            const lex_time = (lex_end_time - lex_start_time).toFixed(3);
+            const parse_time = (parse_end_time - parse_start_time).toFixed(3);
+            const eval_time = (eval_end_time - eval_start_time).toFixed(3);
+
+            const total_time = (
+                (lex_end_time - lex_start_time) +
+                (parse_end_time - parse_start_time) +
+                (eval_end_time - eval_start_time)
+            ).toFixed(3);
+
+            stdout.write(`TOTAL: ${total_time} ms = LEXER: ${lex_time} ms + PARSE: ${parse_time} ms + EVAL: ${eval_time} ms`);
+        }
+    },
+    {
+        dispatch: "features",
+        aliases: ["feat"],
+        doc: "Lists all currently enabled features.",
+        fn: (_, ctx) => {
+            const { lexer } = ctx;
+
+            const feats = Array.from(lexer.ctx.features.values());
+            let out = "Features Enabled:\n";
+
+            if (feats.length === 0) out += " None.";
+
+            for (let i = 0; i < feats.length; i++) {
+                if (feats[i].split("").some(ch => Lexer.isWhitespace(ch)))
+                    out += ` |${feats[i]}|`;
+                else
+                    out += ` ${feats[i]}`;
+            }
+
+            return out;
+        }
+    },
+    {
         dispatch: "apropos",
         aliases: ["ap", "/"],
         doc: "Searches for bound identifiers containing a string.",
         arg_names: ["search-term"],
-        fn: (args, _, env) => {
+        fn: (args, ctx) => {
+            const { env } = ctx;
+
             const bindings = [
                 ...env.bindings.keys(),
                 ...env.builtins.keys()
@@ -156,11 +353,6 @@ const REPL_COMMANDS = new REPLCommandTable([
 
                 line_len += bind.length;
 
-                if (line_len > REPL_APROPOS_MAX_LINE_LENGTH) {
-                    out += "\n";
-                    line_len = 0;
-                }
-
                 out += bind;
             }
 
@@ -171,7 +363,9 @@ const REPL_COMMANDS = new REPLCommandTable([
         dispatch: "doc",
         doc: "Reads the documentation, if any, for a bound identifier.",
         arg_names: ["ident"],
-        fn: (args, _, env) => {
+        fn: (args, ctx) => {
+            const { env } = ctx;
+
             if (args.length === 0) return `No identifier specified. Usage: ,doc <ident>`;
 
             const ident = args[0];
@@ -244,10 +438,12 @@ const REPL_COMMANDS = new REPLCommandTable([
         }
     },
     {
-        dispatch: "commands",
+        dispatch: "commands", // TODO: Allow for mid-entry tabulation to differentiate entries spanning multiple lines
         aliases: ["cmds", ","],
         doc: "Lists commands and their usage.",
-        fn: (_, _0, _1, _2, _3, _4, table) => {
+        fn: (_, ctx) => {
+            const { table } = ctx;
+
             let out = "";
 
             for (const id of table.valid_ids) {
@@ -277,7 +473,9 @@ const REPL_COMMANDS = new REPLCommandTable([
         dispatch: "env",
         doc: "Prints the full top-level Bracket environment",
         manual_write: true,
-        fn: (_, _0, env) => {
+        fn: (_, ctx) => {
+            const { env } = ctx;
+
             function prune(value: unknown, prune_terms = new Set(["builtins", "__builtins", "__stdout"]), seen = new WeakMap()): unknown {
                 if (value && typeof value === "object") {
                     if (seen.has(value)) {
@@ -342,77 +540,204 @@ const enum KeyPress {
     LEFT = "\u001b[D",
 };
 
-export function REPL(use_hist = true) {
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    else throw new Error("This REPL requires a TTY.");
+export class REPL {
+    constructor(
+        public use_hist: boolean = true
+    ) {
+        this.hist = this.use_hist ? this.loadREPLHistory() : [];
+        this.l = new Lexer(["repl"]);
+        this.p = new Parser(this.l.ctx.features, this.l.ctx.file_directives);
+        this.e = new Evaluator(this.l.ctx.features, this.l.ctx.file_directives);
+    }
 
-    process.stdin.setEncoding("utf8");
-    process.stdin.resume();
+    start() {
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+        else throw new Error("This REPL requires a TTY.");
 
-    process.on("SIGINT", exit);
-    process.on("SIGUSR1", exit);
-    process.on("SIGUSR2", exit);
-    process.on("uncaughtException", err => {
-        console.error(err);
-        exit(1);
-    });
+        process.stdin.setEncoding("utf8");
+        process.stdin.resume();
 
-    let buffer: string[] = [""];
-    let cursor_line = 0;
-    let cursor_col = 0;
-    let current_hist = -1;
-    let last_rendered: string[] = [];
-    let last_rendered_lines = 0;
-    let last_cursor_line = 0;
+        process.on("SIGINT", exit);
+        process.on("SIGUSR1", exit);
+        process.on("SIGUSR2", exit);
+        process.on("uncaughtException", err => {
+            console.error(err);
+            exit(1);
+        });
 
-    const hist = use_hist ? loadREPLHistory() : [];
-    const temp_hist_buffers = new Map<number, string[]>();
+        process.stdin.on("data", data => {
+            const key_str = String(data);
 
-    const l = new Lexer();
-    const p = new Parser();
-    const e = new Evaluator();
+            if (this.isEnd(key_str)) {
+                if (this.buffer[this.cursor_line].length === 0) {
+                    exit(0);
+                } else {
+                    this.temp_hist_buffers.set(-1, [""]);
+                    this.current_hist = -1;
+                    this.buffer = this.getHistEntry(-1);
+                    this.cursor_line = 0;
+                    this.cursor_col = 0;
+                    this.render();
+                    return;
+                }
+            }
 
-    const repl_stdout = new Output();
-    const command_stdout = new Output({
-        forward_to: repl_stdout,
+            if (this.isEnter(key_str)) {
+                this.commitBuffer();
+                return;
+            }
+
+            if (key_str === KeyPress.FF) {
+                this.clear();
+                this.render();
+                return;
+            }
+
+            if (key_str === KeyPress.DEL) {
+                this.backspace();
+                this.render();
+                return;
+            }
+
+            if (key_str === KeyPress.HT) {
+                if (!REPL_AUTOCOMPLETE) return;
+                const autocomplete = this.getAutocomplete();
+                const start_pos = Math.max(0, this.cursor_col - autocomplete.write_count);
+                this.buffer[this.cursor_line] =
+                    this.buffer[this.cursor_line].slice(0, start_pos) +
+                    autocomplete.full +
+                    this.buffer[this.cursor_line].slice(start_pos + autocomplete.write_count);
+
+                this.cursor_col = this.buffer.length;
+                this.render();
+                return;
+            }
+
+            if (key_str === KeyPress.UP) {
+                if (!this.use_hist) return;
+
+                if (this.current_hist >= this.hist.length) return;
+                this.buffer = this.getHistEntry(++this.current_hist);
+
+                this.cursor_line = this.buffer.length - 1;
+                this.cursor_col = this.buffer[this.cursor_line].length;
+
+                this.render();
+                return;
+            }
+
+            if (key_str === KeyPress.DOWN) {
+                if (!this.use_hist) return;
+
+                if (this.current_hist < 0) return;
+                this.current_hist--;
+
+                if (this.current_hist === -1) {
+                    this.buffer = this.temp_hist_buffers.get(-1) ?? [""];
+                } else {
+                    this.buffer = this.getHistEntry(this.current_hist);
+                }
+
+                this.cursor_line = 0;
+                this.cursor_col = this.buffer[this.cursor_line].length;
+
+                this.render();
+                return;
+            }
+
+            // if (key_str === KeyPress.UP) {
+            //     moveCursorUp();
+            //     render();
+            //     return;
+            // }
+            //
+            // if (key_str === KeyPress.DOWN) {
+            //     moveCursorDown();
+            //     render();
+            //     return;
+            // }
+
+            if (key_str === KeyPress.RIGHT) {
+                this.moveCursorRight();
+                this.render();
+                return;
+            }
+
+            if (key_str === KeyPress.LEFT) {
+                this.moveCursorLeft();
+                this.render();
+                return;
+            }
+
+            if (key_str < " " || key_str === "\u007f") return;
+
+            this.insertChar(key_str);
+            this.render();
+        });
+
+        if (REPL_BANNER_ENABLED)
+            STDOUT.write(`${WELCOME_MESSAGE}\n`);
+
+        this.render();
+    }
+
+    buffer: string[] = [""];
+    cursor_line = 0;
+    cursor_col = 0;
+    current_hist = -1;
+    last_rendered: string[] = [];
+    last_rendered_lines = 0;
+    last_cursor_line = 0;
+
+    hist: string[][];
+
+    temp_hist_buffers = new Map<number, string[]>();
+
+    l: Lexer;
+    p: Parser;
+    e: Evaluator;
+
+    repl_stdout = new Output();
+    command_stdout = new Output({
+        forward_to: this.repl_stdout,
         chunk_fn: (c) => {
-            const lines = c.trimEnd().split("\n");
+            const lines = ("\n" + wrapLines(c.trimEnd())).split("\n");
             if (lines[0].trim() === "")
                 return "\n" + lines.slice(1).map(l => "; " + l).join("\n");
             else
                 return lines.map(l => "; " + l).join("\n");
         }
     });
-    const env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, undefined, repl_stdout);
+    env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, undefined, this.repl_stdout);
 
-    function insertChar(ch: string): void {
+    insertChar(ch: string): void {
         if (ch === "\n") {
-            const before = buffer[cursor_line].slice(0, cursor_col);
-            const after = buffer[cursor_line].slice(cursor_col);
-            buffer[cursor_line] = before;
-            cursor_line++;
-            cursor_col = 0;
-            buffer.splice(cursor_line, 0, after);
+            const before = this.buffer[this.cursor_line].slice(0, this.cursor_col);
+            const after = this.buffer[this.cursor_line].slice(this.cursor_col);
+            this.buffer[this.cursor_line] = before;
+            this.cursor_line++;
+            this.cursor_col = 0;
+            this.buffer.splice(this.cursor_line, 0, after);
         } else {
-            buffer[cursor_line] =
-                buffer[cursor_line].slice(0, cursor_col) +
+            this.buffer[this.cursor_line] =
+                this.buffer[this.cursor_line].slice(0, this.cursor_col) +
                 ch +
-                buffer[cursor_line].slice(cursor_col);
-            cursor_col += ch.length;
+                this.buffer[this.cursor_line].slice(this.cursor_col);
+            this.cursor_col += ch.length;
         }
 
-        temp_hist_buffers.set(current_hist, buffer);
+        this.temp_hist_buffers.set(this.current_hist, this.buffer);
     }
 
-    function isEnter(key: string): boolean {
+    isEnter(key: string): boolean {
         return key === KeyPress.CR || key === KeyPress.LF;
     }
 
-    function isEnd(key: string): boolean {
+    isEnd(key: string): boolean {
         return key === KeyPress.EOT || key === KeyPress.ETX;
     }
 
-    function loadREPLHistory(): string[][] {
+    loadREPLHistory(): string[][] {
         if (!REPL_HISTORY_FILE || !fs.existsSync(REPL_HISTORY_FILE)) return [];
 
         const lines = fs.readFileSync(REPL_HISTORY_FILE, "utf8")
@@ -426,36 +751,36 @@ export function REPL(use_hist = true) {
             .map(l => l.replaceAll("::::", "::").split("\n"));
     }
 
-    function appendREPLHistory(current_buffer: string[]): void {
-        if (hist.at(0) === current_buffer) return;
+    appendREPLHistory(current_buffer: string[]): void {
+        if (this.hist.at(0) === current_buffer) return;
         const escaped = current_buffer.map(line => line.replaceAll("::", "::::"));
 
         fs.appendFileSync(REPL_HISTORY_FILE, escaped + "::\n");
-        hist.unshift(current_buffer);
+        this.hist.unshift(current_buffer);
     }
 
-    function getHistEntry(idx: number): string[] {
-        if (temp_hist_buffers.has(idx))
-            return temp_hist_buffers.get(idx)!;
+    getHistEntry(idx: number): string[] {
+        if (this.temp_hist_buffers.has(idx))
+            return this.temp_hist_buffers.get(idx)!;
 
-        return idx >= hist.length ? [""] : hist[idx];
+        return idx >= this.hist.length ? [""] : this.hist[idx];
     }
 
-    function REPLRunWithVerbosity(verbosity: number, callback: () => void): void {
+    REPLRunWithVerbosity(verbosity: number, callback: () => void): void {
         if (REPL_VERBOSITY < verbosity) return;
         callback();
     }
 
-    function stdoutFlush() {
-        STDOUT.write(env.stdout.buffer + (env.stdout.buffer === "" || env.stdout.buffer.at(-1) === "\n" ? "" : "\n"));
-        env.stdout.reset();
+    stdoutFlush() {
+        STDOUT.write(this.env.stdout.buffer + (this.env.stdout.buffer === "" || this.env.stdout.buffer.at(-1) === "\n" ? "" : "\n"));
+        this.env.stdout.reset();
     }
 
-    function evaluate(expr: string): { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram } {
+    evaluate(expr: string): { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram } {
         let ret: { result: Token, code: PartialExitCode, ast: ASTNode | ASTProgram };
 
         try {
-            const { result: toks, code: lex_code } = l.lex(expr);
+            const { result: toks, code: lex_code } = this.l.lex(expr);
             if (lex_code !== PartialExitCode.SUCCESS) {
                 ret = {
                     result: toks.at(-1) ?? TokenError("lexer error"),
@@ -465,7 +790,7 @@ export function REPL(use_hist = true) {
                 return ret;
             }
 
-            const { result: ast, code: parse_code } = p.parse(toks);
+            const { result: ast, code: parse_code } = this.p.parse(toks);
             if (parse_code !== PartialExitCode.SUCCESS) {
                 ret = {
                     result:
@@ -481,53 +806,53 @@ export function REPL(use_hist = true) {
             if (!(ast instanceof ASTProgram))
                 throw new Error(`unexpected ASTNode; expected a Program`);
 
-            const value = e.evaluateProgram(ast, env, env.stdout, false);
+            const value = this.e.evaluateProgram(ast, this.env, this.env.stdout, false);
 
-            appendREPLHistory(expr.split("\n"));
+            this.appendREPLHistory(expr.split("\n"));
 
             ret = { result: value, code: PartialExitCode.SUCCESS, ast };
         } catch (err) {
             ret = {
-                result: TokenError(`${env.label} ${((err as any).message ?? String(err))}`),
+                result: TokenError(`${this.env.label} ${((err as any).message ?? String(err))}`),
                 code: PartialExitCode.ERROR,
                 ast: new ASTSExprNode()
             };
 
             if (REPL_HIST_APPEND_ERRORS)
-                appendREPLHistory(expr.split("\n"));
+                this.appendREPLHistory(expr.split("\n"));
             return ret;
         }
 
         return ret;
     }
 
-    function commitBuffer(): void {
-        const input = buffer.join("\n");
+    commitBuffer(): void {
+        const input = this.buffer.join("\n");
         let final_result: Token = TokenVoid();
 
         if (input === "") {
             STDOUT.write("\n");
-            render();
+            this.render();
             return;
         }
 
         if (input[0] === ",") {
             try {
-                REPL_COMMANDS.run(input, command_stdout, l, p, e, env);
+                REPL_COMMANDS.run(input, this.command_stdout, this.l, this.p, this.e, this.env, this);
                 if (REPL_SAVE_COMMANDS_TO_HIST)
-                    appendREPLHistory([input]);
+                    this.appendREPLHistory([input]);
             } catch (err) {
-                env.stdout.write("\n" + ((err as any).message ?? String(err)));
+                this.env.stdout.write("\n" + ((err as any).message ?? String(err)));
                 if (REPL_HIST_APPEND_ERRORS && REPL_SAVE_COMMANDS_TO_HIST)
-                    appendREPLHistory([input]);
+                    this.appendREPLHistory([input]);
             } finally {
-                env.stdout.write("\n");
-                stdoutFlush();
+                this.env.stdout.write("\n");
+                this.stdoutFlush();
             }
         } else {
-            const before_count = env.stdout.write_count;
+            const before_count = this.env.stdout.write_count;
 
-            const { result, code, ast } = evaluate(input);
+            const { result, code, ast } = this.evaluate(input);
 
             switch (code) {
                 case PartialExitCode.SUCCESS:
@@ -537,20 +862,20 @@ export function REPL(use_hist = true) {
                     final_result = result;
                     break;
                 case PartialExitCode.INCOMPLETE:
-                    insertChar("\n");
-                    render();
+                    this.insertChar("\n");
+                    this.render();
                     return;
             }
 
             STDOUT.write("\n");
 
-            stdoutFlush();
+            this.stdoutFlush();
 
-            REPLRunWithVerbosity(2, () => {
+            this.REPLRunWithVerbosity(2, () => {
                 printDeep(ast);
             });
 
-            REPLRunWithVerbosity(1, () => {
+            this.REPLRunWithVerbosity(1, () => {
                 printDeep(final_result);
             });
 
@@ -558,24 +883,24 @@ export function REPL(use_hist = true) {
                 STDOUT.write(final_result.toString());
             }
 
-            const wrote_output = env.stdout.write_count !== before_count;
+            const wrote_output = this.env.stdout.write_count !== before_count;
 
             if (wrote_output || (final_result && final_result.type !== TokenType.VOID && final_result.type !== TokenType.EOF))
                 STDOUT.write("\n");
         }
 
-        buffer = [""];
-        temp_hist_buffers.clear();
-        current_hist = -1;
-        cursor_line = 0;
-        cursor_col = 0;
-        // last_rendered = [];
-        // last_cursor_line = 0;
+        this.buffer = [""];
+        this.temp_hist_buffers.clear();
+        this.current_hist = -1;
+        this.cursor_line = 0;
+        this.cursor_col = 0;
+        // this.last_rendered = [];
+        // this.last_cursor_line = 0;
 
-        render();
+        this.render();
     }
 
-    function backspace(): void {
+    backspace(): void {
         // if (cursor_col === 0) {
         //     if (cursor_line === 0) return;
         //     const prev = buffer[cursor_line - 1];
@@ -586,54 +911,54 @@ export function REPL(use_hist = true) {
         //     return;
         // };
 
-        if (cursor_col === 0) return;
+        if (this.cursor_col === 0) return;
 
-        buffer[cursor_line] =
-            buffer[cursor_line].slice(0, cursor_col - 1) +
-            buffer[cursor_line].slice(cursor_col);
-        cursor_col--;
+        this.buffer[this.cursor_line] =
+            this.buffer[this.cursor_line].slice(0, this.cursor_col - 1) +
+            this.buffer[this.cursor_line].slice(this.cursor_col);
+        this.cursor_col--;
 
-        temp_hist_buffers.set(current_hist, buffer);
+        this.temp_hist_buffers.set(this.current_hist, this.buffer);
     }
 
     // TODO: Split current input, only check current ident and only at cursor position
-    function getAutocomplete() {
-        const keys = [...env.bindings.keys(), ...env.builtins.keys()];
-        const full = keys.find(v => v.startsWith(buffer[cursor_line].substring(0, cursor_col))) ?? "";
-        const suffix = full?.substring(cursor_col);
+    getAutocomplete() {
+        const keys = [...this.env.bindings.keys(), ...this.env.builtins.keys()];
+        const full = keys.find(v => v.startsWith(this.buffer[this.cursor_line].substring(0, this.cursor_col))) ?? "";
+        const suffix = full?.substring(this.cursor_col);
 
         return { full, suffix, write_count: full.length - suffix.length };
     }
 
-    function moveCursorLeft(): void {
-        if (cursor_col > 0) {
-            cursor_col--;
-        } else if (cursor_line > 0) {
+    moveCursorLeft(): void {
+        if (this.cursor_col > 0) {
+            this.cursor_col--;
+        } else if (this.cursor_line > 0) {
             // cursor_line--;
             // cursor_col = Math.max(buffer[cursor_line].length, 0);
         }
     }
 
-    function moveCursorRight(): void {
-        if (cursor_col < buffer[cursor_line].length) {
-            cursor_col++;
-        } else if (cursor_line < buffer.length - 1) {
+    moveCursorRight(): void {
+        if (this.cursor_col < this.buffer[this.cursor_line].length) {
+            this.cursor_col++;
+        } else if (this.cursor_line < this.buffer.length - 1) {
             // cursor_line++;
             // cursor_col = 0;
         }
     }
 
-    function moveCursorUp(): void {
-        if (cursor_line > 0) {
-            cursor_line--;
-            cursor_col = Math.min(cursor_col, buffer[cursor_line].length);
+    moveCursorUp(): void {
+        if (this.cursor_line > 0) {
+            this.cursor_line--;
+            this.cursor_col = Math.min(this.cursor_col, this.buffer[this.cursor_line].length);
         }
     }
 
-    function moveCursorDown(): void {
-        if (cursor_line < buffer.length - 1) {
-            cursor_line++;
-            cursor_col = Math.min(cursor_col, buffer[cursor_line].length);
+    moveCursorDown(): void {
+        if (this.cursor_line < this.buffer.length - 1) {
+            this.cursor_line++;
+            this.cursor_col = Math.min(this.cursor_col, this.buffer[this.cursor_line].length);
         }
     }
 
@@ -692,130 +1017,16 @@ export function REPL(use_hist = true) {
     //     last_rendered_lines = cursor_line;
     // }
 
-    function render(): void {
+    render(): void {
         STDOUT.write("\r\u001b[2K");
-        STDOUT.write(REPL_PROMPT + buffer[0]);
-        STDOUT.write(`\r\u001b[${REPL_PROMPT.length + cursor_col}C`);
+        STDOUT.write(REPL_PROMPT + this.buffer[0]);
+        STDOUT.write(`\r\u001b[${REPL_PROMPT.length + this.cursor_col}C`);
     }
 
-    function clear(): void {
+    clear(): void {
         STDOUT.write("\r\u001b[2J\u001b[H");
-        last_rendered = [];
-        last_cursor_line = 0;
+        this.last_rendered = [];
+        this.last_cursor_line = 0;
     }
 
-    process.stdin.on("data", data => {
-        const key_str = String(data);
-
-        if (isEnd(key_str)) {
-            if (buffer[cursor_line].length === 0) {
-                exit(0);
-            } else {
-                temp_hist_buffers.set(-1, [""]);
-                current_hist = -1;
-                buffer = getHistEntry(-1);
-                cursor_line = 0;
-                cursor_col = 0;
-                render();
-                return;
-            }
-        }
-
-        if (isEnter(key_str)) {
-            commitBuffer();
-            return;
-        }
-
-        if (key_str === KeyPress.FF) {
-            clear();
-            render();
-            return;
-        }
-
-        if (key_str === KeyPress.DEL) {
-            backspace();
-            render();
-            return;
-        }
-
-        if (key_str === KeyPress.HT) {
-            if (!REPL_AUTOCOMPLETE) return;
-            const autocomplete = getAutocomplete();
-            const start_pos = Math.max(0, cursor_col - autocomplete.write_count);
-            buffer[cursor_line] =
-                buffer[cursor_line].slice(0, start_pos) +
-                autocomplete.full +
-                buffer[cursor_line].slice(start_pos + autocomplete.write_count);
-
-            cursor_col = buffer.length;
-            render();
-            return;
-        }
-
-        if (key_str === KeyPress.UP) {
-            if (!use_hist) return;
-
-            if (current_hist >= hist.length) return;
-            buffer = getHistEntry(++current_hist);
-
-            cursor_line = buffer.length - 1;
-            cursor_col = buffer[cursor_line].length;
-
-            render();
-            return;
-        }
-
-        if (key_str === KeyPress.DOWN) {
-            if (!use_hist) return;
-
-            if (current_hist < 0) return;
-            current_hist--;
-
-            if (current_hist === -1) {
-                buffer = temp_hist_buffers.get(-1) ?? [""];
-            } else {
-                buffer = getHistEntry(current_hist);
-            }
-
-            cursor_line = 0;
-            cursor_col = buffer[cursor_line].length;
-
-            render();
-            return;
-        }
-
-        // if (key_str === KeyPress.UP) {
-        //     moveCursorUp();
-        //     render();
-        //     return;
-        // }
-        //
-        // if (key_str === KeyPress.DOWN) {
-        //     moveCursorDown();
-        //     render();
-        //     return;
-        // }
-
-        if (key_str === KeyPress.RIGHT) {
-            moveCursorRight();
-            render();
-            return;
-        }
-
-        if (key_str === KeyPress.LEFT) {
-            moveCursorLeft();
-            render();
-            return;
-        }
-
-        if (key_str < " " || key_str === "\u007f") return;
-
-        insertChar(key_str);
-        render();
-    });
-
-    if (REPL_BANNER_ENABLED)
-        STDOUT.write(`${WELCOME_MESSAGE}\n`);
-
-    render();
 }

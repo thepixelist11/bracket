@@ -4,6 +4,7 @@ import { TOKEN_PRINT_TYPE_MAP } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
+import { toDisplay } from "./utils.js";
 
 export const STDLIB = new Map<string, BuiltinFunction>([
     ["+", { fn: (...args) => args.length === 0 ? 0 : args.reduce((acc, v) => acc + v), ret_type: TokenType.NUM, arg_type: [TokenType.NUM], min_args: 0, variadic: true, pure: true, doc: "Adds numbers from left to right.", arg_names: ["nums"] }],
@@ -329,16 +330,6 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 (val.type === TokenType.STR || val.type === TokenType.SYM)
             ) return;
 
-            function toDisplay(tok: Token): string {
-                if (tok.type === TokenType.PROCEDURE) {
-                    return `#<procedure:${val.literal.toString()}>`;
-                } else if (tok.type === TokenType.LIST) {
-                    return `(${(tok.value as Token[]).map(t => toDisplay(t)).join(" ")})`;
-                } else {
-                    return tok.literal.toString();
-                }
-            }
-
             env.stdout.write(toDisplay(val));
         },
         min_args: 1,
@@ -356,16 +347,6 @@ export const STDLIB = new Map<string, BuiltinFunction>([
                 val.literal.length === 0 &&
                 (val.type === TokenType.STR || val.type === TokenType.SYM)
             ) return;
-
-            function toDisplay(tok: Token): string {
-                if (tok.type === TokenType.PROCEDURE) {
-                    return `#<procedure:${val.literal.toString()}>`;
-                } else if (tok.type === TokenType.LIST) {
-                    return `(${(tok.value as Token[]).map(t => toDisplay(t)).join(" ")})`;
-                } else {
-                    return tok.literal.toString();
-                }
-            }
 
             env.stdout.write(toDisplay(val) + "\n");
         },
@@ -774,6 +755,133 @@ export const STDLIB = new Map<string, BuiltinFunction>([
         },
         doc: "Exchanges the values of two mutable bindings.",
         arg_names: ["a", "b"]
+    }],
+    ["eq?", {
+        min_args: 2,
+        raw: ["token", "token"],
+        ret_type: TokenType.BOOL,
+        arg_type: [TokenType.ANY, TokenType.ANY],
+        pure: true,
+        fn: (a, b) => {
+            if (a.type !== b.type) return false;
+
+            switch (a.type) {
+                case TokenType.LIST:
+                case TokenType.PROCEDURE:
+                    return a.value === b.value;
+
+                case TokenType.SYM:
+                case TokenType.NUM:
+                case TokenType.STR:
+                case TokenType.CHAR:
+                case TokenType.BOOL:
+                    return a.literal === b.literal;
+
+                case TokenType.VOID:
+                    return true;
+
+                default:
+                    return a === b;
+            }
+        },
+        doc: "Produces true if a and b are the same object or represent the same immediate value.",
+        arg_names: ["a", "b"]
+    }],
+    ["eqv?", { // NOTE: This implementation may not be accurate in the future.
+        min_args: 2,
+        raw: ["token", "token"],
+        ret_type: TokenType.BOOL,
+        arg_type: [TokenType.ANY, TokenType.ANY],
+        pure: true,
+        fn: (a, b) => {
+            if (a.type !== b.type) return false;
+
+            switch (a.type) {
+                case TokenType.LIST:
+                case TokenType.PROCEDURE:
+                    return a.value === b.value;
+
+                case TokenType.SYM:
+                case TokenType.NUM:
+                case TokenType.STR:
+                case TokenType.CHAR:
+                case TokenType.BOOL:
+                    return a.literal === b.literal;
+
+                case TokenType.VOID:
+                    return true;
+
+                default:
+                    return a === b;
+            }
+        },
+        doc: "Produces true if a and b are the same atomic value or the same object.",
+        arg_names: ["a", "b"]
+    }],
+    ["equal?", {
+        min_args: 2,
+        raw: ["token", "token"],
+        ret_type: TokenType.BOOL,
+        arg_type: [TokenType.ANY, TokenType.ANY],
+        pure: true,
+        fn: function equal(a, b): boolean {
+            if (a.type !== b.type) return false;
+
+            switch (a.type) {
+                case TokenType.PROCEDURE:
+                    return a.value === b.value;
+
+                case TokenType.LIST: {
+                    const xs = a.value as Token[];
+                    const ys = b.value as Token[];
+
+                    if (xs.length !== ys.length) return false;
+
+                    for (let i = 0; i < xs.length; i++) {
+                        if (!equal(xs[i], ys[i])) return false;
+                    }
+
+                    return true;
+                }
+
+                case TokenType.SYM:
+                case TokenType.NUM:
+                case TokenType.STR:
+                case TokenType.CHAR:
+                case TokenType.BOOL:
+                case TokenType.IDENT:
+                    return a.literal === b.literal;
+
+                case TokenType.VOID:
+                    return true;
+
+                default:
+                    return false;
+            }
+        },
+        doc: "Produces true if a and b are the same atomic value or the same object.",
+        arg_names: ["a", "b"]
+    }],
+    ["error", {
+        min_args: 1,
+        variadic: true,
+        raw: ["token"],
+        ret_type: TokenType.ERROR,
+        arg_type: [TokenType.ANY],
+        fn: (...parts: Token[]) => {
+            const parts_str = parts.map(p => toDisplay(p));
+            throw parts_str.join(" ");
+        },
+        doc: "Throws an error with its message being the space-delimited concatenation of all arguments printed as printed by display.",
+        arg_names: ["parts"]
+    }],
+    ["void", {
+        min_args: 0,
+        ret_type: TokenType.VOID,
+        arg_type: [],
+        fn: () => TokenVoid(),
+        doc: "Produces a void literal.",
+        arg_names: []
     }],
 ]);
 

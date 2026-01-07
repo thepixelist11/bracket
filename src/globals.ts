@@ -1,4 +1,5 @@
 import path from "path";
+import os from "os";
 import { TokenType, Token, ValueType, BOOL_FALSE, BOOL_TRUE } from "./token.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
@@ -21,8 +22,96 @@ export const REPL_LOAD_COMMANDS_FROM_HIST = true as const;
 export const REPL_AUTOCOMPLETE = false as const;
 export const REPL_AUTOCOMPLETE_GHOST_COLOR = 238 as const;
 export const REPL_HIST_APPEND_ERRORS = true as const;
-export const REPL_APROPOS_MAX_LINE_LENGTH = 78 as const;
+export const REPL_COMMAND_MAX_LINE_LENGTH = 78 as const;
 export const REPL_COMMAND_CORRECTION_MAX_DISTANCE = 3 as const;
+
+export const FD_SHEBANG = "exec_with" as const;
+export const FD_LANGUAGE = "language" as const;
+
+export const FEAT_OS_LINUX = "os:linux" as const;
+export const FEAT_OS_WINDOWS = "os:windows" as const;
+export const FEAT_OS_MACOS = "os:macos" as const;
+
+export const FEAT_ARCH_x86_64 = "arch:x86_64" as const;
+export const FEAT_ARCH_ARM = "arch:arm64" as const;
+
+export const FEAT_ENDIAN_LITTLE = "endian:le" as const;
+export const FEAT_ENDIAN_BIG = "endian:be" as const;
+
+export const FEAT_ENV_DEVELOPMENT = "env:development" as const;
+export const FEAT_ENV_PRODUCTION = "env:production" as const;
+export const FEAT_ENV_DEBUG = "env:debug" as const;
+
+export const FEAT_SHEBANG = "shebang" as const;
+export const FEAT_UNICODE = "unicode" as const;
+export const FEAT_VERTICAL_BARS = "vbars" as const;
+
+export const FEAT_CASE_INSENSITIVE = "case:insensitive" as const;
+
+export const FEAT_COMMENTS_SEMICOLON = "comments:semicolon" as const;
+export const FEAT_COMMENTS_BLOCK = "comments:block" as const;
+export const FEAT_COMMENTS_NESTED = "comments:nested" as const;
+export const FEAT_COMMENTS_DATUM = "comments:datum" as const;
+
+export const FEAT_READER_COND = "reader:cond" as const;
+export const FEAT_READER_CASE_FOLDING = "reader:case-folding" as const;
+export const FEAT_READER_SHARED_STRUCTURE = "reader:shared-structure" as const;
+export const FEAT_READER_LABELS = "reader:labels" as const;
+export const FEAT_READER_POSITIONAL_METADATA = "reader:pos-meta" as const;
+export const FEAT_READER_SYNTAX_QUOTE = "reader:syntax-quote" as const;
+export const FEAT_READER_QUASIQUOTE = "reader:quasiquote" as const;
+export const FEAT_READER_UNQUOTE_SPLICING = "reader:unquote-splicing" as const;
+
+export const FEAT_IMPL_NAME = (n: string) => `impl:name:${n}` as const;
+export const FEAT_IMPL_VERSION = (n: string) => `impl:version:${n}` as const;
+
+export const FEAT_VM_BYTECODE = "vm:bytecode" as const;
+export const FEAT_GC_PRECISE = "gc:precise" as const;
+export const FEAT_GC_CONSERVATIVE = "gc:conservative" as const;
+
+export const FEAT_IO = "io" as const;
+export const FEAT_LOAD = "load" as const;
+export const FEAT_EVAL = "eval" as const;
+export const FEAT_FFI = "ffi" as const;
+export const FEAT_SANDBOXED = "sandboxed" as const;
+
+export const FEAT_DEBUG = "debug" as const;
+export const FEAT_REPL = "repl" as const;
+
+export const FEAT_DEFAULTS: Map<string, string[]> = new Map([
+    [`${LANG_NAME}@${VERSION_NUMBER}`, [
+        FEAT_SHEBANG,
+        FEAT_UNICODE,
+        FEAT_VERTICAL_BARS,
+        FEAT_COMMENTS_SEMICOLON,
+        FEAT_COMMENTS_BLOCK,
+        FEAT_COMMENTS_NESTED,
+        FEAT_COMMENTS_DATUM,
+        FEAT_IO,
+        FEAT_IMPL_NAME(LANG_NAME),
+        FEAT_IMPL_VERSION(VERSION_NUMBER),
+    ]]
+])
+
+export function getDefaultReaderFeatures(lang: string, version: string) {
+    const feats: string[] = [...FEAT_DEFAULTS.get(`${lang}@${version}`) ?? []];
+
+    if (process.arch === "x64") feats.push(FEAT_ARCH_x86_64);
+    if (process.arch === "arm" ||
+        process.arch === "arm64") feats.push(FEAT_ARCH_ARM);
+    if (process.platform === "linux") feats.push(FEAT_OS_LINUX);
+    if (process.platform === "win32") feats.push(FEAT_OS_WINDOWS);
+    if (process.platform === "darwin") feats.push(FEAT_OS_MACOS);
+    if (os.endianness() === "BE") feats.push(FEAT_ENDIAN_BIG);
+    else if (os.endianness() === "LE") feats.push(FEAT_ENDIAN_LITTLE);
+
+    return feats;
+}
+
+export type InterpreterContext = {
+    file_directives: Map<string, any>;
+    features: Set<string>;
+};
 
 export let STDOUT = new Output({ forward_to: process.stdout });
 

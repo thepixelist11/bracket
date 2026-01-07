@@ -8,4 +8,5 @@ import { REPL } from "./repl.js";
 import { runFile } from "./run_file.js";
 
 // runFile(process.argv[2]);
-REPL();
+const repl = new REPL();
+repl.start();

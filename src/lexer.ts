@@ -1,11 +1,5 @@
-import { CHAR_TOK_MAP, PartialExitCode, RPAREN_TYPE_MAP, PAREN_TYPE_MAP } from "./globals.js";
-import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta } from "./token.js";
-import { printDeep } from "./utils.js";
-
-export type ReaderContext = {
-    file_directives: Map<string, any>;
-    features: Set<string>;
-};
+import { CHAR_TOK_MAP, PartialExitCode, RPAREN_TYPE_MAP, PAREN_TYPE_MAP, LANG_NAME, VERSION_NUMBER, getDefaultReaderFeatures, InterpreterContext, FD_LANGUAGE, FD_SHEBANG } from "./globals.js";
+import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta, TokenForm } from "./token.js";
 
 export type ReaderMacro = {
     dispatch: string;
@@ -14,7 +8,7 @@ export type ReaderMacro = {
     fn: (
         lexer: Lexer,
         start: { row: number, col: number },
-        ctx: ReaderContext,
+        ctx: InterpreterContext,
     ) => { result: Token; code: PartialExitCode };
 };
 
@@ -52,6 +46,8 @@ function splitForms(tokens: Token[]): Token[][] {
         if (tok.type === TokenType.LPAREN) depth++;
         if (tok.type === TokenType.RPAREN) depth--;
 
+        if (depth < 0) throw new Error("illegal form; found extraneous )");
+
         current.push(tok);
 
         if (depth === 0) {
@@ -67,7 +63,7 @@ function readFormList(
     lexer: Lexer,
     start: TokenMetadata,
     opts: { min: number, max?: number, error: string }
-): { forms: Token[][], code: PartialExitCode } | { result: Token; code: PartialExitCode } {
+): { result: Token[][], code: PartialExitCode.SUCCESS } | { result: Token; code: Exclude<PartialExitCode, PartialExitCode.SUCCESS> } {
     const form = lexer.readForm();
     if (form.code !== PartialExitCode.SUCCESS)
         return { result: form.result[0], code: form.code };
@@ -97,13 +93,13 @@ function readFormList(
         };
     }
 
-    return { forms, code: PartialExitCode.SUCCESS };
+    return { result: forms, code: PartialExitCode.SUCCESS };
 }
 
 function readNForms(
     lexer: Lexer,
     n: number,
-): { forms: Token[][]; code: PartialExitCode } | { result: Token; code: PartialExitCode } {
+): { result: Token[][]; code: PartialExitCode.SUCCESS } | { result: Token; code: Exclude<PartialExitCode, PartialExitCode.SUCCESS> } {
     const forms: Token[][] = [];
 
     for (let i = 0; i < n; i++) {
@@ -114,7 +110,7 @@ function readNForms(
         forms.push(form.result);
     }
 
-    return { forms, code: PartialExitCode.SUCCESS };
+    return { result: forms, code: PartialExitCode.SUCCESS };
 }
 
 const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
@@ -155,10 +151,29 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
         })
     },
     {
+        dispatch: "v",
+        cursor: "prefix",
+        produces: TokenType.VOID,
+        fn: (lexer, start) => {
+            const toks = [
+                TokenLParen(),
+                TokenIdent("void"),
+                TokenRParen(),
+            ];
+
+            lexer.inject(toks);
+
+            return {
+                result: TokenVoid(start),
+                code: PartialExitCode.SUCCESS,
+            }
+        }
+    },
+    {
         dispatch: "\\",
         cursor: "prefix",
         produces: TokenType.CHAR,
-        fn: (lexer, _) => { lexer.movePosition(); return lexer.readCharTok() },
+        fn: (lexer, _) => { return lexer.readCharTok() },
     },
     {
         dispatch: ";",
@@ -177,18 +192,59 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
         }
     },
     {
+        dispatch: "!",
+        cursor: "manual",
+        produces: TokenType.VOID,
+        fn: (lexer, start, ctx) => {
+            lexer.movePosition();
+            const filepath = lexer.readStringToLineEnd();
+
+            if (filepath.code !== PartialExitCode.SUCCESS)
+                return { result: TokenError(filepath.result, start), code: filepath.code };
+
+            ctx.file_directives.set(FD_SHEBANG, filepath.result);
+
+            return {
+                result: TokenVoid(lexer.makeMeta(start)),
+                code: PartialExitCode.SUCCESS
+            };
+        }
+    },
+    {
         dispatch: "meta",
         cursor: "prefix",
         produces: TokenType.VOID,
         fn: (lexer, start) => {
             const res = readNForms(lexer, 2);
-            if ("result" in res) return res;
+            if (res.code !== PartialExitCode.SUCCESS) return res;
 
-            const [key, value] = res.forms.map(f => f[0]);
+            if (res.result[0].length !== 1 ||
+                res.result[1].length !== 1) {
+                return {
+                    result: TokenError("expected #meta <key> <value>"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            const [key, value] = res.result.map(f => f[0]);
 
             if (key.type !== TokenType.IDENT) {
                 return {
                     result: TokenError("expected #meta <key> <value>; expected key to be an ident"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (key.literal.startsWith("__")) {
+                return {
+                    result: TokenError("Any metadata properties of the format __KEY are reserved for internal use."),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            if (key.literal === "row" || key.literal === "col") {
+                return {
+                    result: TokenError("Positional metadata may not be overwritten."),
                     code: PartialExitCode.ERROR
                 };
             }
@@ -207,6 +263,40 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
                 return { result: TokenMeta({ meta: { [key.literal]: value.literal } }, start), code: PartialExitCode.SUCCESS };
             else
                 return { result: TokenMeta({ meta: { [key.literal]: parseFloat(value.literal) } }, start), code: PartialExitCode.SUCCESS };
+        }
+    },
+    {
+        dispatch: "doc",
+        cursor: "prefix",
+        produces: TokenType.VOID,
+        fn: (lexer, start) => {
+            const res = lexer.readForm();
+            if (res.code !== PartialExitCode.SUCCESS)
+                return { result: res.result[0], code: res.code };
+
+            if (res.result.length !== 1) {
+                return {
+                    result: TokenError("expected #doc <value>; expected value to be a string or a number"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            const value = res.result[0];
+
+            if (value.type !== TokenType.STR && value.type !== TokenType.NUM) {
+                return {
+                    result: TokenError("expected #doc <value>; expected value to be a string or a number"),
+                    code: PartialExitCode.ERROR
+                };
+            }
+
+            lexer.skipWhitespace();
+            lexer.skipComment();
+
+            if (value.type === TokenType.STR)
+                return { result: TokenMeta({ meta: { doc: value.literal } }, start), code: PartialExitCode.SUCCESS };
+            else
+                return { result: TokenMeta({ meta: { doc: parseFloat(value.literal) } }, start), code: PartialExitCode.SUCCESS };
         }
     },
     {
@@ -251,7 +341,7 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
             const lang_name = lexer.readIdentTok();
             if (lang_name.code !== PartialExitCode.SUCCESS) return lang_name;
 
-            ctx.file_directives.set("language", lang_name.result.literal);
+            ctx.file_directives.set(FD_LANGUAGE, lang_name.result.literal);
 
             return {
                 result: TokenVoid(lexer.makeMeta(start)),
@@ -270,9 +360,9 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
                 error: "expected #feat-require(feature err-msg)"
             });
 
-            if ("result" in res) return res;
+            if (res.code !== PartialExitCode.SUCCESS) return res;
 
-            const [feature_form, err_form] = res.forms;
+            const [feature_form, err_form] = res.result;
 
             if (
                 feature_form.length !== 1 ||
@@ -320,9 +410,9 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
                 error: "expected #?(feature then [else])"
             });
 
-            if ("result" in res) return res;
+            if (res.code !== PartialExitCode.SUCCESS) return res;
 
-            const [feature_form, then_form, else_form] = res.forms;
+            const [feature_form, then_form, else_form] = res.result;
 
             if (
                 feature_form.length !== 1 ||
@@ -355,9 +445,9 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
         fn: (lexer, start, ctx) => {
             const res = readNForms(lexer, 2);
 
-            if ("result" in res) return res;
+            if (res.code !== PartialExitCode.SUCCESS) return res;
 
-            const [feature_form, body_form] = res.forms;
+            const [feature_form, body_form] = res.result;
 
             if (
                 feature_form.length !== 1 ||
@@ -385,9 +475,9 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
         fn: (lexer, start, ctx) => {
             const res = readNForms(lexer, 2);
 
-            if ("result" in res) return res;
+            if (res.code !== PartialExitCode.SUCCESS) return res;
 
-            const [feature_form, body_form] = res.forms;
+            const [feature_form, body_form] = res.result;
 
             if (
                 feature_form.length !== 1 ||
@@ -426,10 +516,10 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
             if (radix.type !== TokenType.NUM ||
                 isNaN(radix_num) ||
                 !Number.isInteger(radix_num) ||
-                radix_num <= 0
+                radix_num <= 1
             ) {
                 return {
-                    result: TokenError("expected a natural radix"),
+                    result: TokenError("expected a natural radix greater than 1"),
                     code: PartialExitCode.ERROR
                 };
             }
@@ -518,53 +608,7 @@ const READER_MACROS = new ReaderMacroTable([ // TODO: Add doc meta shorthand
             };
         }
     },
-    {
-        dispatch: "uuid",
-        cursor: "prefix",
-        produces: TokenType.STR,
-        fn: (_, start) => {
-            let uuid = "";
-
-            for (let i = 0; i < 32; i++) {
-                const char = (Math.min(Math.floor(Math.random() * 16), 15)).toString(16);
-                uuid += char;
-                if (i === 8 || i === 12 || i === 16 || i === 20) {
-                    uuid += "-";
-                }
-            }
-
-            return {
-                result: TokenStr(uuid, start),
-                code: PartialExitCode.SUCCESS
-            };
-        }
-    },
-    {
-        dispatch: "UUID",
-        cursor: "prefix",
-        produces: TokenType.STR,
-        fn: (_, start) => {
-            let uuid = "";
-
-            for (let i = 0; i < 32; i++) {
-                const char = (Math.min(Math.floor(Math.random() * 16), 15)).toString(16);
-                uuid += char;
-                if (i === 8 || i === 12 || i === 16 || i === 20) {
-                    uuid += "-";
-                }
-            }
-
-            return {
-                result: TokenStr(uuid.toUpperCase(), start),
-                code: PartialExitCode.SUCCESS
-            };
-        }
-    },
 ]);
-
-function getDefaultReaderFeatures() {
-    return [];
-}
 
 export class Lexer {
     idx: number = 0;
@@ -572,7 +616,7 @@ export class Lexer {
     col: number = 0;
     row: number = 0;
 
-    ctx: ReaderContext = {
+    ctx: InterpreterContext = {
         file_directives: new Map(),
         features: new Set(),
     }
@@ -580,7 +624,7 @@ export class Lexer {
     constructor(features: string[] = []) {
         this.ctx.features = new Set([
             ...features,
-            ...getDefaultReaderFeatures()
+            ...getDefaultReaderFeatures(LANG_NAME, VERSION_NUMBER)
         ]);
     }
 
@@ -696,41 +740,6 @@ export class Lexer {
         }
 
         return { result: final_result, code: PartialExitCode.SUCCESS };
-    }
-
-    private readAtomicToken(): { result: Token; code: PartialExitCode } {
-        this.skipWhitespace();
-        this.skipComment();
-
-        if (!this.cur)
-            return { result: TokenEOF({ row: this.row, col: this.col }), code: PartialExitCode.SUCCESS };
-
-        if (CHAR_TOK_MAP[this.cur]) {
-            const tok = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col });
-            this.movePosition();
-            return { result: tok, code: PartialExitCode.SUCCESS };
-        }
-
-        if (this.cur === "#") {
-            const meta = { row: this.row, col: this.col };
-            const macro = READER_MACROS.resolve(this);
-            if (!macro)
-                return { result: TokenError("unknown reader macro", meta), code: PartialExitCode.ERROR };
-
-            this.movePosition();
-            if (macro.cursor === "prefix")
-                for (let i = 0; i < macro.dispatch.length; i++)
-                    this.movePosition();
-
-            return macro.fn(this, meta, this.ctx);
-        }
-
-        if (Lexer.isQuote(this.cur)) return this.readStringTok();
-        if (this.cur === "'") return this.readSymbolTok();
-
-        return Lexer.isNumeric(this.cur) || Lexer.validNumericStartChar(this.cur)
-            ? this.readNumericTok()
-            : this.readIdentTok();
     }
 
     movePosition(): void {
@@ -1203,6 +1212,17 @@ export class Lexer {
         }
 
         return { result: [tok.result], code: PartialExitCode.SUCCESS };
+    }
+
+    readStringToLineEnd(): { result: string; code: PartialExitCode } {
+        let result = "";
+
+        while (this.cur && this.cur !== "\n") {
+            result += this.cur;
+            this.movePosition();
+        }
+
+        return { result, code: PartialExitCode.SUCCESS };
     }
 
     makeMeta(row: number, col: number): TokenMetadata

@@ -1,6 +1,6 @@
 import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram, ASTIdent } from "./ast.js";
 import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, TokenIdent } from "./token.js";
-import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, STDOUT } from "./globals.js";
+import { TEMP_ENVIRONMENT_LABEL, JS_PRINT_TYPE_MAP, TOKEN_PRINT_TYPE_MAP, VALUE_TYPE_JS_TYPE_MAP, ARGUMENT_TYPE_COERCION, RETURN_TYPE_COERCION, STDOUT, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { BracketEnvironment } from "./env.js";
 
 export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
@@ -33,6 +33,20 @@ export type BuiltinFunction =
             };
 
 export class Evaluator {
+    ctx: InterpreterContext = {
+        file_directives: new Map(),
+        features: new Set(),
+    }
+
+    constructor(features: string[] | Set<string> = [], file_directives: Map<string, string> = new Map()) {
+        this.ctx.features = new Set([
+            ...features,
+            ...getDefaultReaderFeatures(LANG_NAME, VERSION_NUMBER)
+        ]);
+
+        this.ctx.file_directives = file_directives;
+    }
+
     evaluate(ast: ASTNode, env?: BracketEnvironment): Token {
         const real_env = env ?? new BracketEnvironment(TEMP_ENVIRONMENT_LABEL);
         const expanded = Evaluator.expand(ast, real_env);
@@ -172,14 +186,17 @@ export class Evaluator {
 
             if (!builtin.constant && !builtin.special && builtin.macro === true) {
                 const result = builtin.expander(ast.rest, env);
-
+                console.log(expanded_op.tok.literal);
+                // if (!result.meta) result.meta = { row: -1, col: -1 };
+                // result.meta["__macro"] = ;
                 return Evaluator.expand(result, env);
             }
         }
 
         const expanded_args = ast.rest.map(arg => Evaluator.expand(arg, env));
 
-        return new ASTSExprNode(expanded_op, ...expanded_args);
+        const final_result = new ASTSExprNode(expanded_op, ...expanded_args);
+        return final_result;
     }
 
     static callBuiltin(env: BracketEnvironment, fn_name: string, args: Token[], meta: TokenMetadata): Token {
@@ -204,12 +221,16 @@ export class Evaluator {
 
         for (let i = 0; i < args.length; i++) {
             const current_arg_type = (i >= builtin.arg_type.length ? builtin.arg_type.at(-1) : builtin.arg_type[i])!;
-            const current_raw_type = builtin.raw ? (i >= builtin.raw.length ? builtin.raw.at(-1) : builtin.raw[i]) : "normal";
+            const current_raw_type = builtin.raw
+                ? (i >= builtin.raw.length
+                    ? builtin.raw.at(-1)
+                    : builtin.raw[i])
+                : (current_arg_type === TokenType.ANY ? "token" : "normal");
 
             let arg = args[i];
 
             if (current_arg_type === TokenType.ANY) {
-                if (builtin.raw && builtin.raw[i] !== "token")
+                if (current_raw_type !== "token")
                     throw new Error(`Functions with arguments of type Any must take in a raw token. Got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${args[i].toString()}`);
 
                 typed_args.push(arg);
@@ -217,8 +238,8 @@ export class Evaluator {
             }
 
             if (current_arg_type === TokenType.PROCEDURE) {
-                if (args[i].type === TokenType.PROCEDURE || args[i].type === TokenType.IDENT) {
-                    typed_args.push((builtin.raw && builtin.raw[i] !== "token") ? args[i] : ARGUMENT_TYPE_COERCION[current_arg_type](args[i], env));
+                if (arg.type === TokenType.PROCEDURE || arg.type === TokenType.IDENT) {
+                    typed_args.push((current_raw_type === "token") ? arg : ARGUMENT_TYPE_COERCION[current_arg_type](args[i], env));
                 } else {
                     throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${args[i].toString()}`);
                 }

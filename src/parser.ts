@@ -1,12 +1,25 @@
-import { Token, TokenList, TokenMetadata, TokenMetadataInjector, TokenType, TokenVoid } from "./token.js";
-import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./globals.js";
+import { Token, TokenList, TokenMetadataInjector, TokenType, TokenVoid } from "./token.js";
+import { PartialExitCode, PAREN_TYPE_MAP, RPAREN_TYPE_MAP, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { ASTNode, ASTSExprNode, ASTLiteralNode, ASTError, ASTProgram } from "./ast.js";
-import { printDeep } from "./utils.js";
 
 export class Parser {
     private toks: Token[] = [];
     private idx: number = 0;
     private meta_injector_stack: TokenMetadataInjector[] = [];
+
+    ctx: InterpreterContext = {
+        file_directives: new Map(),
+        features: new Set(),
+    }
+
+    constructor(features: string[] | Set<string> = [], file_directives: Map<string, string> = new Map()) {
+        this.ctx.features = new Set([
+            ...features,
+            ...getDefaultReaderFeatures(LANG_NAME, VERSION_NUMBER)
+        ]);
+
+        this.ctx.file_directives = file_directives;
+    }
 
     private get cur() { return this.toks[this.idx] ?? undefined; }
 

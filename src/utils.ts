@@ -1,10 +1,12 @@
 import { Writable } from "stream";
 import util from "util";
 import { GOODBYE_MESSAGE, REPL_BANNER_ENABLED, STDOUT } from "./globals.js";
+import { Token, TokenType } from "./token.js";
 
 export class Output extends Writable {
     public write_count = 0;
     public buffer = "";
+    public targeted: Output[] = [];
 
     private readonly target: NodeJS.WritableStream | null;
     private readonly chunk_fn: (chunk: string) => string;
@@ -12,6 +14,10 @@ export class Output extends Writable {
     constructor(options: { forward_to?: NodeJS.WritableStream, chunk_fn?: (chunk: string) => string } = {}) {
         super({ decodeStrings: false });
         this.target = options?.forward_to ?? null;
+
+        if (this.target instanceof Output)
+            this.target.targeted.push(this);
+
         this.chunk_fn = options?.chunk_fn ?? ((s) => s);
     }
 
@@ -33,6 +39,10 @@ export class Output extends Writable {
     reset(): void {
         this.write_count = 0;
         this.buffer = "";
+
+        for (const tar of this.targeted) {
+            tar.reset();
+        }
     }
 }
 
@@ -71,4 +81,14 @@ export function editDistance(a: string, b: string) {
     }
 
     return dp[m][n];
+}
+
+export function toDisplay(tok: Token): string {
+    if (tok.type === TokenType.PROCEDURE) {
+        return `#<procedure:${tok.literal.toString()}>`;
+    } else if (tok.type === TokenType.LIST) {
+        return `(${(tok.value as Token[]).map(t => toDisplay(t)).join(" ")})`;
+    } else {
+        return tok.literal.toString();
+    }
 }

@@ -1,6 +1,6 @@
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, STDOUT } from "./globals.js";
-import { Output, printDeep } from "./utils.js";
+import { Output } from "./utils.js";
 import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js"
 import { Evaluator } from "./evaluator.js";
@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import { ASTProgram } from "./ast.js";
 
-export function runFile(filepath: string, env?: BracketEnvironment) {
+export function runFile(filepath: string, env?: BracketEnvironment, stdout?: Output) {
     if (!filepath)
         throw new Error("a valid filepath must be provided");
 
@@ -19,7 +19,7 @@ export function runFile(filepath: string, env?: BracketEnvironment) {
 
     const rel_fp = path.relative(".", fp);
 
-    const env_stdout = new Output();
+    const env_stdout = stdout ?? env?.stdout ?? new Output();
     if (!env) env = new BracketEnvironment(rel_fp, undefined, env_stdout);
 
     const contents = fs.readFileSync(fp, "utf8");
@@ -41,13 +41,13 @@ export function runFile(filepath: string, env?: BracketEnvironment) {
         if (!(ast instanceof ASTProgram))
             throw new Error(`unexpected ASTNode; expected a Program`);
 
-        e.evaluateProgram(ast, env);
+        e.evaluateProgram(ast, env, env_stdout);
 
-        STDOUT.write(env.stdout.buffer);
+        STDOUT.write(env_stdout.buffer);
     } catch (err) {
         const err_tok = TokenError(`${env.label} ${((err as any).message ?? String(err))}`);
-        STDOUT.write(err_tok.toString() + "\n");
+        STDOUT.write(err_tok.toString());
     }
 
-    env.stdout.reset()
+    env_stdout.reset()
 }
