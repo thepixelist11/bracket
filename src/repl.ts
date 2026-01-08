@@ -566,13 +566,31 @@ const enum KeyPress {
 
 export class REPL {
     constructor(
-        public use_hist: boolean = true
+        public use_hist: boolean = true,
+        env?: BracketEnvironment,
+        stdout?: Output,
     ) {
         this.hist = this.use_hist ? this.loadREPLHistory() : [];
         this.l = new Lexer([FEAT_REPL, FEAT_IO, FEAT_SYS_EXEC]);
         this.p = new Parser(this.l.ctx.features, this.l.ctx.file_directives);
         this.e = new Evaluator(this.l.ctx.features, this.l.ctx.file_directives);
-        this.env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, this.l.ctx, undefined, this.repl_stdout);
+        this.repl_stdout = stdout ?? new Output();
+
+        if (env)
+            this.env = env;
+        else
+            this.env = new BracketEnvironment(REPL_ENVIRONMENT_LABEL, this.l.ctx, undefined, this.repl_stdout);
+
+        this.command_stdout = new Output({
+            forward_to: this.repl_stdout,
+            chunk_fn: (c) => {
+                const lines = (wrapLines(c.trimEnd())).split("\n");
+                if (lines[0].trim() === "")
+                    return "\n" + lines.slice(1).map(l => "; " + l).join("\n");
+                else
+                    return lines.map(l => "; " + l).join("\n");
+            }
+        });
     }
 
     start() {
@@ -724,17 +742,8 @@ export class REPL {
 
     env: BracketEnvironment;
 
-    repl_stdout = new Output();
-    command_stdout = new Output({
-        forward_to: this.repl_stdout,
-        chunk_fn: (c) => {
-            const lines = (wrapLines(c.trimEnd())).split("\n");
-            if (lines[0].trim() === "")
-                return "\n" + lines.slice(1).map(l => "; " + l).join("\n");
-            else
-                return lines.map(l => "; " + l).join("\n");
-        }
-    });
+    repl_stdout: Output;
+    command_stdout: Output;
 
     insertChar(ch: string): void {
         if (ch === "\n") {
