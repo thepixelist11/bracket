@@ -72,7 +72,6 @@ Evaluator
 ↓
 Result token
 
-
 Evaluation occurs within an environment that may persist across runs.
 This enables REPL sessions and the ability to import definitions from other `.brkt` files.
 
@@ -111,8 +110,71 @@ You may execute one or more `.brkt` files. By default, each file is evaluated in
 
 ### Interactive Mode (REPL)
 
-Interactive mode evaluates input line by line in a persistent environment.  
-Files may be loaded before entering the REPL, and all definitions remain available.
+Bracket provides an interactive REPL designed for experimentation, learning, and introspection. It allows you to write, evaluate, and inspect expressions in real time, making it an ideal environment for exploring functional programming and language design concepts.
+
+#### Key Features
+
+- **Interactive Evaluation**
+  Evaluate expressions, define functions, and manipulate data structures directly. Example:
+
+```scheme
+(define (fib x)
+  (if (< x 2)
+      x
+      (+ (fib (- x 1)) (fib (- x 2)))))
+(fib 5) ; => 5
+```
+
+- **Introspection & Documentation**
+  Dynamically inspect functions, variables, and macros:
+  - `,doc <identifier>`: Shows documentation for a symbol.
+  - `,source <identifier>`: Displays the macro-expanded source code for a symbol.
+  - `,apropos <search-term>`: Searches the environment for identifiers containing a substrin
+
+- **Environment Exploration**
+  Examine the current environment and bindings:
+  - `,env`: Lists all top-level symbols and their values.
+  - `,commands` or `,cmds`: Lists all available REPL commands.
+  - `,features` or `,feat`: Lists enabled language and system features.
+
+- **Execution Utilities**
+  - `,time <expr>`: Measures execution time, with detailed breakdowns (lexer, parser, evaluation).
+  - `,load <filepath>`: Load external Bracket files and import their bindings.
+  - `,clear`: Clears the REPL terminal for a clean workspace.
+  - `,exit` / `,quit`: Exit the REPL.
+
+- **User-Friendly Feedback**
+  - Typos in identifiers trigger suggestions.
+  - REPL commands and output are consistent and self-descriptive.
+
+#### Example Workflow
+
+```scheme
+;; Define a recursive factorial function
+(define (factorial n)
+  (if (zero? n)
+      1
+      (* n (factorial (sub1 n)))))
+
+;; Inspect its source
+,source factorial
+; (lambda
+;   (n)
+;     (if
+;       (zero? n)
+;       1
+;       (* n (factorial (sub1 n)))))
+
+;; Check documentation
+,doc factorial
+; factorial: (factorial n)
+
+; Execute and time
+(factorial 5)
+,time (factorial 5)
+120
+; TOTAL: 0.531 ms = LEXER: 0.083 ms + PARSE: 0.115 ms + EVAL: 0.332 ms
+```
 
 ### Command-Line Options
 
