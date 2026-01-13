@@ -278,16 +278,16 @@ Produces the square root of x.
 cbrt: (cbrt arg0)
 Produces the cube root of x.
 
-<: (< args...)
+&lt;: (&lt; args...)
 Produces true if the arguments are in strictly increasing order.
 
-<=: (<= args...)
+&lt;=: (&lt;= args...)
 Produces true if the arguments are in non-decreasing order.
 
->: (> args...)
+&gt;: (&gt; args...)
 Produces true if the arguments are in strictly decreasing order.
 
->=: (>= args...)
+&gt;=: (&gt;= args...)
 Produces true if the arguments are in non-increasing order.
 
 =: (= args...)
@@ -407,9 +407,9 @@ log10: (log10)
 
 log2: (log2)
 
-degrees->radians: (degrees->radians)
+degrees-&gt;radians: (degrees-&gt;radians)
 
-radians->degrees: (radians->degrees)
+radians-&gt;degrees: (radians-&gt;degrees)
 
 atan2: (atan2)
 
@@ -737,10 +737,10 @@ Produces true if x is a string.
 char?: (char? arg0)
 Produces true if x is a char.
 
-string->symbol: (string->symbol arg0)
+string-&gt;symbol: (string-&gt;symbol arg0)
 Converts a string to a symbol.
 
-symbol->string: (symbol->string arg0)
+symbol-&gt;string: (symbol-&gt;string arg0)
 Converts a symbol to a string.
 
 string-length: (string-length arg0)
@@ -758,7 +758,7 @@ Produces the substring of str from index s up to, but not including e or the end
 string=?: (string=? args...)
 Produces true if all strings are equal.
 
-string<?: (string<?)
+string&lt;?: (string&lt;?)
 
 string-ci=?: (string-ci=?)
 
@@ -782,13 +782,13 @@ string-prefix?: (string-prefix?)
 
 string-suffix?: (string-suffix?)
 
-char->integer: (char->integer)
+char-&gt;integer: (char-&gt;integer)
 
-integer->char: (integer->char)
+integer-&gt;char: (integer-&gt;char)
 
-string->chars: (string->chars)
+string-&gt;chars: (string-&gt;chars)
 
-chars->string: (chars->string)
+chars-&gt;string: (chars-&gt;string)
 </code></pre>
 </details>
 

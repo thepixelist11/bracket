@@ -18,6 +18,13 @@ function generateDocumentation(name, doc = "", is_procedure = false, arg_names =
     return out;
 }
 
+function htmlEscape(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 for (const [fn, mod] of stdlib.BRACKET_BUILTINS.associations) {
     const { constant, raw_arg_names, doc, variadic, min_args, value, special } = stdlib.BRACKET_BUILTINS.get(fn);
     const arg_names = raw_arg_names ?? (variadic
@@ -39,10 +46,10 @@ for (const mod in DOCS) {
 
     const list = [];
     for (const fn in docs) {
-        list.push(docs[fn].trimEnd());
+        list.push(htmlEscape(docs[fn].trimEnd()));
     }
 
-    console.log(list.join("\n\n\n"));
+    console.log(list.join("\n\n"));
 
     console.log(`</code></pre>`);
     console.log(`</details>\n`);
