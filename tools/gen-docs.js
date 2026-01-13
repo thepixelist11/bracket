@@ -33,7 +33,7 @@ for (const mod in DOCS) {
     const docs = DOCS[mod];
 
     console.log(`### ${mod}`);
-    console.log(`<details>\n\`\`\`scheme`);
+    console.log(`<details>\n\`\`\``);
 
     let list = [];
     for (const fn in docs) {
@@ -41,6 +41,6 @@ for (const mod in DOCS) {
     }
     console.log(list.join("\n\n"));
 
-    console.log(`\n\`\`\`\n</details>`);
+    console.log(`\n\`\`\`\n</details>\n`);
 }
 console.log("\n</details>");

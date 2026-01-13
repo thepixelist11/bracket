@@ -166,7 +166,7 @@ Bracket is inspired by Scheme and Racket, as well as by the broader tradition of
 
 ### bracket
 <details>
-```scheme
+```
 identity: (identity arg0)
 Produces its argument unchanged.
 
@@ -213,7 +213,7 @@ eqv?: (eqv? arg0 arg1)
 Produces true if a and b are the same atomic value or the same object.
 
 equal?: (equal? arg0 arg1)
-Produces true if a and b are the same atomic value or the same object.
+Produces true if a and b are of the same structure or atomic value.
 
 swap!: (swap! arg0 arg1)
 Exchanges the values of two mutable bindings.
@@ -245,9 +245,10 @@ case: (case)
 
 ```
 </details>
+
 ### bracket.math
 <details>
-```scheme
+```
 +: (+ args...)
 Adds numbers from left to right.
 
@@ -352,9 +353,10 @@ hypot: (hypot)
 
 ```
 </details>
+
 ### bracket.math.trig
 <details>
-```scheme
+```
 exp: (exp arg0)
 Produces the result of e^x.
 
@@ -439,18 +441,20 @@ acoth: (acoth)
 
 ```
 </details>
+
 ### bracket.math.random
 <details>
-```scheme
+```
 random: (random)
 
 random-range: (random-range)
 
 ```
 </details>
+
 ### bracket.system
 <details>
-```scheme
+```
 sys-exec: (sys-exec args...)
 Executes a system command with space-delimited arguments and both prints and returns STDOUT. Can only be used if the `sys-eval` feature is set and the environment is not sandboxed.
 
@@ -468,9 +472,10 @@ cwd: (cwd)
 
 ```
 </details>
+
 ### bracket.testing
 <details>
-```scheme
+```
 check-expect: (check-expect arg0 arg1)
 Checks whether the value of the expr expression is equal? to the value produced by expected. If not, an error will be thrown.
 
@@ -491,9 +496,10 @@ test-suite: (test-suite)
 
 ```
 </details>
+
 ### bracket.logic
 <details>
-```scheme
+```
 not: (not arg0)
 Produces true if x is false; otherwise produces false.
 
@@ -529,9 +535,10 @@ nor: (nor)
 
 ```
 </details>
+
 ### bracket.data.list
 <details>
-```scheme
+```
 list: (list args...)
 Produces a list containing the given arguments
 
@@ -662,9 +669,10 @@ count: (count)
 
 ```
 </details>
+
 ### bracket.data.list.functional
 <details>
-```scheme
+```
 build-list: (build-list arg0 arg1)
 Produces a list of length n by applying a procedure to all indices from 0 to n - 1.
 
@@ -728,9 +736,10 @@ uncurry: (uncurry)
 
 ```
 </details>
+
 ### bracket.data.string
 <details>
-```scheme
+```
 string?: (string? arg0)
 Produces true if x is a string.
 
@@ -792,9 +801,10 @@ chars->string: (chars->string)
 
 ```
 </details>
+
 ### bracket.io
 <details>
-```scheme
+```
 print: (print arg0)
 Writes the textual representation of a value to the standard output.
 
@@ -823,5 +833,6 @@ write: (write)
 
 ```
 </details>
+
 
 </details>
