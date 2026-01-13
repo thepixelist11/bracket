@@ -39,13 +39,13 @@ for (const mod in DOCS) {
 
     const list = [];
     for (const fn in docs) {
-        list.push(docs[fn]);
+        list.push(docs[fn].trimEnd());
     }
-    console.log(list.join("\n\n"));
+
+    console.log(list.join("\n\n\n"));
 
     console.log(`</code></pre>`);
     console.log(`</details>\n`);
 }
 
 console.log(`</details>`);
-
