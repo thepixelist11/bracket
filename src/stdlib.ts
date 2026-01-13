@@ -312,7 +312,7 @@ const STDLIB: BuiltinSet = {
             doc: "Produces true if a and b are the same object or represent the same immediate value.",
             arg_names: ["a", "b"]
         }],
-        ["eqv?", { // NOTE: This implementation may not be accurate in the future.
+        ["eqv?", {
             min_args: 2,
             raw: ["token", "token"],
             ret_type: TokenType.BOOL,
