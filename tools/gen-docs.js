@@ -29,18 +29,23 @@ for (const [fn, mod] of stdlib.BRACKET_BUILTINS.associations) {
 }
 
 console.log(`## Standard Library Reference\n<details>\n<summary>Modules</summary>\n`);
+
 for (const mod in DOCS) {
     const docs = DOCS[mod];
 
     console.log(`### ${mod}`);
-    console.log(`<details>\n\`\`\``);
+    console.log(`<details>`);
+    console.log(`<pre><code>`);
 
-    let list = [];
+    const list = [];
     for (const fn in docs) {
         list.push(docs[fn]);
     }
     console.log(list.join("\n\n"));
 
-    console.log(`\n\`\`\`\n</details>\n`);
+    console.log(`</code></pre>`);
+    console.log(`</details>\n`);
 }
-console.log("\n</details>");
+
+console.log(`</details>`);
+

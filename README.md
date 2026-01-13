@@ -166,7 +166,7 @@ Bracket is inspired by Scheme and Racket, as well as by the broader tradition of
 
 ### bracket
 <details>
-```
+<pre><code>
 identity: (identity arg0)
 Produces its argument unchanged.
 
@@ -242,13 +242,12 @@ call-with-values: (call-with-values)
 match: (match)
 
 case: (case)
-
-```
+</code></pre>
 </details>
 
 ### bracket.math
 <details>
-```
+<pre><code>
 +: (+ args...)
 Adds numbers from left to right.
 
@@ -350,13 +349,12 @@ clamp: (clamp)
 sign: (sign)
 
 hypot: (hypot)
-
-```
+</code></pre>
 </details>
 
 ### bracket.math.trig
 <details>
-```
+<pre><code>
 exp: (exp arg0)
 Produces the result of e^x.
 
@@ -438,23 +436,21 @@ asech: (asech)
 acsch: (acsch)
 
 acoth: (acoth)
-
-```
+</code></pre>
 </details>
 
 ### bracket.math.random
 <details>
-```
+<pre><code>
 random: (random)
 
 random-range: (random-range)
-
-```
+</code></pre>
 </details>
 
 ### bracket.system
 <details>
-```
+<pre><code>
 sys-exec: (sys-exec args...)
 Executes a system command with space-delimited arguments and both prints and returns STDOUT. Can only be used if the `sys-eval` feature is set and the environment is not sandboxed.
 
@@ -469,13 +465,12 @@ exit: (exit)
 argv: (argv)
 
 cwd: (cwd)
-
-```
+</code></pre>
 </details>
 
 ### bracket.testing
 <details>
-```
+<pre><code>
 check-expect: (check-expect arg0 arg1)
 Checks whether the value of the expr expression is equal? to the value produced by expected. If not, an error will be thrown.
 
@@ -493,13 +488,12 @@ check-error: (check-error)
 test-case: (test-case)
 
 test-suite: (test-suite)
-
-```
+</code></pre>
 </details>
 
 ### bracket.logic
 <details>
-```
+<pre><code>
 not: (not arg0)
 Produces true if x is false; otherwise produces false.
 
@@ -532,13 +526,12 @@ implies: (implies)
 nand: (nand)
 
 nor: (nor)
-
-```
+</code></pre>
 </details>
 
 ### bracket.data.list
 <details>
-```
+<pre><code>
 list: (list args...)
 Produces a list containing the given arguments
 
@@ -666,13 +659,12 @@ index-of: (index-of)
 member?: (member?)
 
 count: (count)
-
-```
+</code></pre>
 </details>
 
 ### bracket.data.list.functional
 <details>
-```
+<pre><code>
 build-list: (build-list arg0 arg1)
 Produces a list of length n by applying a procedure to all indices from 0 to n - 1.
 
@@ -733,13 +725,12 @@ compose: (compose)
 curry: (curry)
 
 uncurry: (uncurry)
-
-```
+</code></pre>
 </details>
 
 ### bracket.data.string
 <details>
-```
+<pre><code>
 string?: (string? arg0)
 Produces true if x is a string.
 
@@ -798,13 +789,12 @@ integer->char: (integer->char)
 string->chars: (string->chars)
 
 chars->string: (chars->string)
-
-```
+</code></pre>
 </details>
 
 ### bracket.io
 <details>
-```
+<pre><code>
 print: (print arg0)
 Writes the textual representation of a value to the standard output.
 
@@ -830,9 +820,7 @@ read: (read)
 read-line: (read-line)
 
 write: (write)
-
-```
+</code></pre>
 </details>
-
 
 </details>
