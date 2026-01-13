@@ -99,6 +99,8 @@ export class Builtins {
     keys() {
         return this.associations.keys();
     }
+
+    get modules() { return Array.from(this.map.keys()); }
 };
 
 const STDLIB: BuiltinSet = {
@@ -384,7 +386,7 @@ const STDLIB: BuiltinSet = {
                         return false;
                 }
             },
-            doc: "Produces true if a and b are the same atomic value or the same object.",
+            doc: "Produces true if a and b are of the same structure or atomic value.",
             arg_names: ["a", "b"]
         }],
         ["swap!", {
