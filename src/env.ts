@@ -3,13 +3,14 @@ import { InterpreterContext, STDOUT } from "./globals.js";
 import { BuiltinFunction } from "./evaluator.js";
 import { Output } from "./utils.js";
 import { BRACKET_BUILTINS, Builtins } from "./stdlib.js";
+import { RuntimeSymbol } from "./token.js";
 
 export class BracketEnvironment {
     private readonly __parent?: BracketEnvironment;
     private readonly __label: string;
     private readonly __stdout: Output;
     private readonly __ctx: InterpreterContext;
-    private __bindings: Map<string, ASTNode> = new Map();
+    private __bindings: Map<number, ASTNode> = new Map();
     private __builtins: Builtins;
 
     constructor(label: string, ctx: InterpreterContext, parent?: BracketEnvironment, stdout: Output = STDOUT) {
@@ -38,20 +39,20 @@ export class BracketEnvironment {
     get stdout() { return this.__stdout; }
     get ctx() { return this.__ctx; }
 
-    define(ident: string, node: ASTNode) {
-        return this.__bindings.set(ident, node);
+    define(sym: RuntimeSymbol, node: ASTNode) {
+        return this.__bindings.set(sym.id, node);
     }
 
-    get(ident: string): ASTNode | undefined {
-        if (this.__bindings.has(ident)) {
-            return this.__bindings.get(ident);
+    get(sym: RuntimeSymbol): ASTNode | undefined {
+        if (this.__bindings.has(sym.id)) {
+            return this.__bindings.get(sym.id);
         }
-        return this.__parent?.get(ident);
+        return this.__parent?.get(sym);
     }
 
-    has(ident: string): boolean {
-        if (this.__bindings.has(ident)) return true;
-        return this.__parent?.has(ident) ?? false;
+    has(sym: RuntimeSymbol): boolean {
+        if (this.__bindings.has(sym.id)) return true;
+        return this.__parent?.has(sym) ?? false;
     }
 
     public setBuiltin(ident: string, builtin: BuiltinFunction) {

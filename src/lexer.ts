@@ -1,5 +1,5 @@
 import { PartialExitCode, LANG_NAME, VERSION_NUMBER, getDefaultReaderFeatures, InterpreterContext, FD_LANGUAGE, FD_SHEBANG } from "./globals.js";
-import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta, TokenForm } from "./token.js";
+import { Token, TokenEOF, TokenChar, TokenError, TokenNum, TokenStr, TokenIdent, TokenVoid, TokenType, TokenSym, TokenBool, TokenMetadata, TokenRParen, TokenLParen, TokenMeta } from "./token.js";
 
 export const enum ParenType {
     PAREN,
@@ -726,7 +726,7 @@ export class Lexer {
                 this.movePosition();
                 final_result = result;
             } else {
-                final_result = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col });
+                final_result = new Token(CHAR_TOK_MAP[this.cur]!, this.cur, { row: this.row, col: this.col }, {});
                 this.movePosition();
             }
 
@@ -850,7 +850,7 @@ export class Lexer {
 
         const close = RPAREN_TYPE_MAP[PAREN_TYPE_MAP[open]];
         const tokens = [
-            new Token(TokenType.LPAREN, open, { row, col }),
+            TokenLParen(ParenType.PAREN, { row, col })
         ];
 
         this.skipWhitespace();

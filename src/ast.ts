@@ -1,7 +1,5 @@
-import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE } from "./token.js";
+import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE, internSymbol } from "./token.js";
 import { BracketEnvironment } from "./env.js";
-import { Lexer } from "./lexer.js";
-import { printDeep } from "./utils.js";
 
 interface ASTBase {
     meta?: TokenMetadata;
@@ -47,7 +45,7 @@ export class ASTProcedureNode implements ASTBase {
         this.params = params;
         this.body = body;
         this.closure = new BracketEnvironment(name, env.ctx, env);
-        this.closure.define(name, ASTVoid(this.meta));
+        this.closure.define(internSymbol(name), ASTVoid(this.meta));
     }
 }
 

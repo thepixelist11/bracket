@@ -289,9 +289,11 @@ Produces a void literal.
 symbol?: (symbol? arg0)
 Produces true if x is a symbol.
 
-assert: (assert)
+gensym: (gensym args...)
+Returns a new unique symbol with an automatically generated name. base is used as an optional prefix symbol or string.
 
-gensym: (gensym)
+symbol-interned?: (symbol-interned? arg0)
+Returns #t if sym is interned, #f otherwise.
 
 void?: (void?)
 
@@ -800,6 +802,9 @@ char?: (char? arg0)
 Produces true if x is a char.
 
 string-&gt;symbol: (string-&gt;symbol arg0)
+Converts a string to a symbol.
+
+string-&gt;uninterned-symbol: (string-&gt;uninterned-symbol arg0)
 Converts a string to a symbol.
 
 symbol-&gt;string: (symbol-&gt;string arg0)

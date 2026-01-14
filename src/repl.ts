@@ -1,7 +1,7 @@
 import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js";
 import { Evaluator } from "./evaluator.js";
-import { Token, TokenError, TokenVoid, TokenType } from "./token.js";
+import { Token, TokenError, TokenVoid, TokenType, INTERN_TABLE } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
 import { ASTToSourceCode } from "./decompiler.js";
 import { BracketEnvironment } from "./env.js";
@@ -200,8 +200,8 @@ const REPL_COMMANDS = new REPLCommandTable([
 
             if (ident === "") return `No identifier specified. Usage: ,source <ident>`;
 
-            if (env.bindings.has(ident)) {
-                const bound = env.bindings.get(ident)!;
+            if (INTERN_TABLE.has(ident)) {
+                const bound = env.bindings.get(INTERN_TABLE.get(ident)!.id)!;
 
                 return ASTToSourceCode(bound);
             } else if (env.builtins.has(ident)) {
@@ -210,7 +210,7 @@ const REPL_COMMANDS = new REPLCommandTable([
             } else {
                 let cmds: string[] = [];
 
-                const candidates = [...env.bindings.keys()]
+                const candidates = [...INTERN_TABLE.keys()]
                     .map(word => ({ word, dist: editDistance(ident, word) }));
                 const min_distance = Math.min(...candidates.map(v => v.dist));
                 if (min_distance <= REPL_COMMAND_CORRECTION_MAX_DISTANCE)
@@ -350,6 +350,19 @@ const REPL_COMMANDS = new REPLCommandTable([
         }
     },
     {
+        dispatch: "interned",
+        doc: "Prints the current intern table",
+        fn: () => {
+            let out = "";
+
+            for (const [name, sym] of INTERN_TABLE) {
+                out += `${name.padEnd(20, " ")} : ${sym.id}\n`
+            }
+
+            return out;
+        }
+    },
+    {
         dispatch: "apropos",
         aliases: ["ap", "/"],
         doc: "Searches for bound identifiers containing a string.",
@@ -358,7 +371,7 @@ const REPL_COMMANDS = new REPLCommandTable([
             const { env } = ctx;
 
             const bindings = [
-                ...env.bindings.keys(),
+                ...INTERN_TABLE.keys(),
                 ...env.builtins.keys()
             ].filter(s => s.match(args[0])).sort();
 
@@ -401,12 +414,12 @@ const REPL_COMMANDS = new REPLCommandTable([
             if (ident === "") return `No identifier specified. Usage: ,doc <ident>`;
 
             const all_bindings = [
-                ...env.bindings.keys(),
+                ...INTERN_TABLE.keys(),
                 ...env.builtins.keys(),
             ];
 
-            if (env.bindings.has(ident)) {
-                const bound = env.bindings.get(ident)!;
+            if (INTERN_TABLE.has(ident)) {
+                const bound = env.bindings.get(INTERN_TABLE.get(ident)!.id)!;
                 if (!(bound instanceof ASTLiteralNode))
                     return `Identifier bound to non-literal/procedure node. Unable to get documentation.`;
 
@@ -959,7 +972,7 @@ export class REPL {
 
     // TODO: Split current input, only check current ident and only at cursor position
     getAutocomplete() {
-        const keys = [...this.env.bindings.keys(), ...this.env.builtins.keys()];
+        const keys = [...INTERN_TABLE.keys(), ...this.env.builtins.keys()];
         const full = keys.find(v => v.startsWith(this.buffer[this.cursor_line].substring(0, this.cursor_col))) ?? "";
         const suffix = full?.substring(this.cursor_col);
 

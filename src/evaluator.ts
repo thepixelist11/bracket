@@ -1,5 +1,5 @@
 import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram } from "./ast.js";
-import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata } from "./token.js";
+import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, RuntimeSymbol, internSymbol } from "./token.js";
 import { TEMP_ENVIRONMENT_LABEL, STDOUT, BOOL_FALSE, BOOL_TRUE, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { TOKEN_PRINT_TYPE_MAP } from "./token.js";
 import { BracketEnvironment } from "./env.js";
@@ -14,7 +14,7 @@ export const ARGUMENT_TYPE_COERCION: Record<ValueType, (tok: Token, env?: Bracke
     [TokenType.NUM]: (tok: Token) => parseFloat(tok.literal),
     [TokenType.STR]: (tok: Token) => tok.literal,
     [TokenType.CHAR]: (tok: Token) => tok.literal,
-    [TokenType.SYM]: (tok: Token) => tok.literal,
+    [TokenType.SYM]: (tok: Token) => tok.value,
     [TokenType.BOOL]: (tok: Token) => tok.literal === BOOL_TRUE,
     [TokenType.ANY]: (tok: Token) => tok,
     [TokenType.ERROR]: (tok: Token) => tok,
@@ -128,8 +128,8 @@ export class Evaluator {
     static evalExpanded(ast: ASTNode, env: BracketEnvironment, ctx: InterpreterContext): Token {
         if (ast instanceof ASTLiteralNode) {
             if (ast.tok.type === TokenType.IDENT) {
-                if (env.has(ast.tok.literal)) {
-                    const result = env.get(ast.tok.literal);
+                if (env.has(ast.tok.value as RuntimeSymbol)) {
+                    const result = env.get(ast.tok.value as RuntimeSymbol);
 
                     if (result instanceof ASTLiteralNode)
                         return result.tok;
@@ -162,13 +162,16 @@ export class Evaluator {
             throw new Error(`missing procedure expression: probably originally (), which is an illegal empty application`);
 
         const op =
-            (node.first instanceof ASTLiteralNode) ?
+            (
+                node.first instanceof ASTLiteralNode &&
+                node.first.tok.type === TokenType.IDENT
+            ) ?
                 node.first.tok :
                 Evaluator.evalExpanded(node.first, env, ctx);
 
         if (op.type === TokenType.ERROR) return op;
 
-        if (env.builtins.has(op.literal)) {
+        if (op.type === TokenType.IDENT && env.builtins.has(op.literal)) {
             const builtin = env.builtins.get(op.literal)!;
             if (builtin.constant)
                 throw new Error(`application: not a procedure; expected a procedure that can be applied to arguments`);
@@ -329,7 +332,7 @@ export class Evaluator {
         if (typeof result !== VALUE_TYPE_JS_TYPE_MAP[builtin.ret_type])
             throw new Error(`Unexpected return type. Expected ${TOKEN_PRINT_TYPE_MAP[builtin.ret_type]}, got ${JS_PRINT_TYPE_MAP[typeof result]} (${result})`)
 
-        return new Token(builtin.ret_type, RETURN_TYPE_COERCION[builtin.ret_type](result), meta);
+        return new Token(builtin.ret_type, RETURN_TYPE_COERCION[builtin.ret_type](result), meta, {});
     }
 
     static procedureToJS(tok: Token, env: BracketEnvironment, ctx: InterpreterContext): (...args: Token[]) => Token {
@@ -356,7 +359,7 @@ export class Evaluator {
             const closure = new BracketEnvironment("", ctx, fn.closure); // TODO: Label
 
             for (let i = 0; i < args.length; i++)
-                closure.define(fn.params[i], new ASTLiteralNode(args[i]));
+                closure.define(internSymbol(fn.params[i]), new ASTLiteralNode(args[i]));
 
             let result = TokenVoid();
             for (const expr of fn.body) {

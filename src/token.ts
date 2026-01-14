@@ -2,6 +2,18 @@ import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./lexer.j
 import { Lexer } from "./lexer.js";
 import { ASTProcedureNode } from "./ast.js";
 
+let __next_sym_id = 0;
+export const INTERN_TABLE = new Map<string, RuntimeSymbol>();
+
+export function internSymbol(name: string): RuntimeSymbol {
+    let sym = INTERN_TABLE.get(name);
+    if (!sym) {
+        sym = { id: __next_sym_id++, name, interned: true };
+        INTERN_TABLE.set(name, sym);
+    }
+    return sym;
+}
+
 export const BOOL_TRUE = "#t" as const, BOOL_FALSE = "#f" as const;
 
 export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
@@ -26,12 +38,26 @@ export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
 
 export interface TokenMetadata { row: number, col: number, [key: string]: string | number }
 
-export class Token {
+export interface RuntimeSymbol {
+    id: number;
+    interned: boolean;
+    name: string;
+};
+
+type TokenValueTypeMap<T extends TokenType> =
+    T extends TokenType.SYM ? RuntimeSymbol :
+    T extends TokenType.IDENT ? RuntimeSymbol :
+    T extends TokenType.FORM ? Token[] :
+    T extends TokenType.LIST ? Token[] :
+    T extends TokenType.META ? TokenMetadataInjector :
+    {};
+
+export class Token<T extends TokenType = TokenType> {
     constructor(
-        public type: TokenType,
+        public type: T,
         public literal: string,
         public meta: TokenMetadata = { row: -1, col: -1 },
-        public value?: unknown,
+        public value: TokenValueTypeMap<T>,
     ) { }
 
     private escapeString(str: string) {
@@ -63,10 +89,11 @@ export class Token {
             case TokenType.NUM:
                 return `${parseFloat(this.literal)}`;
             case TokenType.SYM:
-                if (this.literal.split("").some(ch => Lexer.isIllegalIdentChar(ch)) || this.literal === "")
-                    return `${nested_list ? "" : "'"}|${this.literal}|`;
+                const sym = this.value as RuntimeSymbol;
+                if (this.literal.split("").some(ch => Lexer.isIllegalIdentChar(ch)) || sym.name === "")
+                    return `${nested_list ? "" : "'"}|${sym.name}|`;
                 else
-                    return `${nested_list ? "" : "'"}${this.literal}`;
+                    return `${nested_list ? "" : "'"}${sym.name}`;
             case TokenType.BOOL:
                 return `${this.literal}`;
             case TokenType.STR:
@@ -119,20 +146,29 @@ export const enum TokenType {
 export type TokenMetadataInjector = { meta: { [key: string]: string | number }, pred?: (tok: Token) => boolean };
 
 function defaultMeta(meta: Partial<TokenMetadata> = {}): TokenMetadata { return { row: meta.row ?? -1, col: meta.col ?? -1 }; }
-export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, defaultMeta(meta)) };
-export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenType.EOF, EOF_CHAR, defaultMeta(meta)) };
-export function TokenVoid(meta?: TokenMetadata) { return new Token(TokenType.VOID, "", defaultMeta(meta)) };
-export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], defaultMeta(meta)) };
-export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], defaultMeta(meta)) };
-export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), defaultMeta(meta)) };
-export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), defaultMeta(meta)) };
-export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, defaultMeta(meta)) };
-export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, defaultMeta(meta)) };
-export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, defaultMeta(meta)) };
-export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, defaultMeta(meta)) };
+export function TokenError(msg: string, meta?: TokenMetadata) { return new Token(TokenType.ERROR, msg, defaultMeta(meta), {}) };
+export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenType.EOF, EOF_CHAR, defaultMeta(meta), {}) };
+export function TokenVoid(meta?: TokenMetadata) { return new Token(TokenType.VOID, "", defaultMeta(meta), {}) as Token<TokenType> };
+export function TokenLParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.LPAREN, LPAREN_TYPE_MAP[type], defaultMeta(meta), {}) as Token<TokenType> };
+export function TokenRParen(type: ParenType = ParenType.PAREN, meta?: TokenMetadata) { return new Token(TokenType.RPAREN, RPAREN_TYPE_MAP[type], defaultMeta(meta), {}) as Token<TokenType> };
+export function TokenNum(num: number | string, meta?: TokenMetadata) { return new Token(TokenType.NUM, num.toString(), defaultMeta(meta), {}) };
+export function TokenSym(sym: string, meta?: TokenMetadata) { return new Token(TokenType.SYM, sym.toString(), defaultMeta(meta), internSymbol(sym)) };
+export function TokenUninternedSym(sym?: string, num_suffix = false, meta?: TokenMetadata) {
+    const res = new Token(TokenType.SYM, (sym ?? "g").toString() + (num_suffix ? __next_sym_id : ""), defaultMeta(meta), {
+        id: __next_sym_id,
+        interned: false,
+        name: (sym ?? "g") + (num_suffix ? __next_sym_id : "")
+    });
+    __next_sym_id++;
+    return res;
+};
+export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, defaultMeta(meta), {}) };
+export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, defaultMeta(meta), {}) };
+export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, defaultMeta(meta), internSymbol(ident)) };
+export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, defaultMeta(meta), {}) };
 export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), proc) };
 export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
-export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), val) };
+export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.FORM, "", defaultMeta(meta), val) };
 export function TokenMeta(injector: TokenMetadataInjector, meta?: TokenMetadata) { return new Token(TokenType.META, "", defaultMeta(meta), injector) };
 
 export type ValueType =

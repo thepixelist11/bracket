@@ -1,10 +1,10 @@
 import { BuiltinFunction } from "./evaluator.js";
-import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata, TOKEN_PRINT_TYPE_MAP, TokenError } from "./token.js";
+import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata, TOKEN_PRINT_TYPE_MAP, TokenError, TokenStr, TokenSym, RuntimeSymbol, TokenUninternedSym } from "./token.js";
 import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool, ASTStr } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
-import { printDeep, toDisplay } from "./utils.js";
+import { toDisplay } from "./utils.js";
 
 function resolveName(names: string[]) {
     return [LANG_NAME.toLowerCase(), ...names].join(".");
@@ -298,6 +298,8 @@ const STDLIB: BuiltinSet = {
                         return a.value === b.value;
 
                     case TokenType.SYM:
+                        return a.value.id === b.value.id;
+
                     case TokenType.NUM:
                     case TokenType.STR:
                     case TokenType.CHAR:
@@ -329,6 +331,8 @@ const STDLIB: BuiltinSet = {
                         return a.value === b.value;
 
                     case TokenType.SYM:
+                        return a.value.id === b.value.id;
+
                     case TokenType.NUM:
                     case TokenType.STR:
                     case TokenType.CHAR:
@@ -372,6 +376,8 @@ const STDLIB: BuiltinSet = {
                     }
 
                     case TokenType.SYM:
+                        return a.value.id === b.value.id;
+
                     case TokenType.NUM:
                     case TokenType.STR:
                     case TokenType.CHAR:
@@ -429,8 +435,33 @@ const STDLIB: BuiltinSet = {
             arg_names: []
         }],
         ["symbol?", { fn: (x) => x.type === TokenType.SYM, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a symbol.", arg_names: ["x"] }],
-        ["assert", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
-        ["gensym", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
+        ["gensym", {
+            min_args: 0,
+            variadic: true,
+            ret_type: TokenType.ANY,
+            arg_type: [TokenType.ANY],
+            raw: ["token"],
+            fn: (base: Token) => {
+                if (base === undefined)
+                    base = TokenStr("g");
+
+                if (base.type !== TokenType.STR && base.type !== TokenType.SYM)
+                    throw new Error(`gensym: expected base to be a Str or a Sym.`);
+
+                return TokenUninternedSym(base.literal, true);
+            },
+            doc: "Returns a new unique symbol with an automatically generated name. base is used as an optional prefix symbol or string.",
+            arg_names: ["base"]
+        }],
+        ["symbol-interned?", {
+            min_args: 1,
+            ret_type: TokenType.BOOL,
+            arg_type: [TokenType.ANY],
+            raw: ["token"],
+            fn: (sym: Token<TokenType.SYM>) => sym.value.interned,
+            doc: "Returns #t if sym is interned, #f otherwise.",
+            arg_names: ["sym"]
+        }],
         ["void?", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["procedure?", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["values", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
@@ -1018,6 +1049,7 @@ const STDLIB_DATA_STRING: BuiltinSet = {
         ["string?", { fn: (x) => x.type === TokenType.STR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a string.", arg_names: ["x"] }],
         ["char?", { fn: (x) => x.type === TokenType.CHAR, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], min_args: 1, raw: ["token"], pure: true, doc: "Produces true if x is a char.", arg_names: ["x"] }],
         ["string->symbol", { fn: (x) => x, ret_type: TokenType.SYM, arg_type: [TokenType.STR], min_args: 1, pure: true, doc: "Converts a string to a symbol.", arg_names: ["str"] }],
+        ["string->uninterned-symbol", { fn: (x) => TokenUninternedSym(x), ret_type: TokenType.ANY, arg_type: [TokenType.STR], min_args: 1, pure: true, doc: "Converts a string to a symbol.", arg_names: ["str"] }],
         ["symbol->string", { fn: (x) => x, ret_type: TokenType.STR, arg_type: [TokenType.SYM], min_args: 1, pure: true, doc: "Converts a symbol to a string.", arg_names: ["sym"] }],
         ["string-length", { fn: (x) => x.length, ret_type: TokenType.NUM, arg_type: [TokenType.STR], min_args: 1, pure: true, doc: "Produces the length of a string in characters.", arg_names: ["str"] }],
         ["string-ref", { fn: (x, i) => { if (i < x.length) return x[i]; else throw new Error("string-ref: index is out of range") }, ret_type: TokenType.CHAR, arg_type: [TokenType.STR, TokenType.NUM], min_args: 2, pure: true, doc: "Produces the character at position i in a string.", arg_names: ["str", "i"] }],
@@ -1288,17 +1320,17 @@ function evalSet(args: ASTNode[], env: BracketEnvironment, _: TokenMetadata, ctx
     if (ident.tok.type !== TokenType.IDENT)
         throw new Error("set!: bad syntax: expected an identifier");
 
-    function mutate(name: string, value: Token, env: BracketEnvironment) {
-        if (env.bindings.has(name)) {
-            env.define(name, new ASTLiteralNode(value));
+    function mutate(sym: RuntimeSymbol, value: Token, env: BracketEnvironment) {
+        if (env.bindings.has(sym.id)) {
+            env.define(sym, new ASTLiteralNode(value));
         } else if (env.parent) {
-            mutate(name, value, env.parent);
+            mutate(sym, value, env.parent);
         } else {
             throw new Error(`set!: cannot set variable before its definition`);
         }
     }
 
-    mutate(ident.tok.literal, Evaluator.evalExpanded(expr, env, ctx), env);
+    mutate(ident.tok.value as RuntimeSymbol, Evaluator.evalExpanded(expr, env, ctx), env);
 
     return TokenVoid();
 }
@@ -1317,7 +1349,10 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadat
         if (final_value.type === TokenType.ERROR)
             throw new Error(final_value.literal);
 
-        env.define(ident.tok.literal, new ASTLiteralNode(final_value, meta));
+        if (ident.tok.type !== TokenType.IDENT)
+            throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[ident.tok.type]}`);
+
+        env.define(ident.tok.value as RuntimeSymbol, new ASTLiteralNode(final_value, meta));
     } else if (ident instanceof ASTSExprNode) {
         if (ident.elements.length === 0)
             throw new Error(`define: bad syntax; no function name or arguments provided`);
@@ -1329,15 +1364,16 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadat
             throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[(ident.elements as ASTLiteralNode[]).find(e => e.tok.type !== TokenType.IDENT)!.tok.type]}`);
 
         const name = (ident.first as ASTLiteralNode).tok.literal;
+        const sym = (ident.first as ASTLiteralNode).tok.value as RuntimeSymbol;
         const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.literal);
 
         const procedure = new ASTProcedureNode(name, params, body_nodes, env);
         const proc_token = TokenProc(procedure);
         const proc_literal = new ASTLiteralNode(proc_token, meta);
 
-        procedure.closure.define(name, proc_literal);
+        procedure.closure.define(sym, proc_literal);
 
-        env.define(name, proc_literal);
+        env.define(sym, proc_literal);
     }
 
     return ASTVoid().tok;
