@@ -200,7 +200,7 @@ const REPL_COMMANDS = new REPLCommandTable([
 
             if (ident === "") return `No identifier specified. Usage: ,source <ident>`;
 
-            if (INTERN_TABLE.has(ident)) {
+            if (INTERN_TABLE.has(ident) && env.bindings.has(INTERN_TABLE.get(ident)!.id)) {
                 const bound = env.bindings.get(INTERN_TABLE.get(ident)!.id)!;
 
                 return ASTToSourceCode(bound);
@@ -418,7 +418,7 @@ const REPL_COMMANDS = new REPLCommandTable([
                 ...env.builtins.keys(),
             ];
 
-            if (INTERN_TABLE.has(ident)) {
+            if (INTERN_TABLE.has(ident) && env.bindings.has(INTERN_TABLE.get(ident)!.id)) {
                 const bound = env.bindings.get(INTERN_TABLE.get(ident)!.id)!;
                 if (!(bound instanceof ASTLiteralNode))
                     return `Identifier bound to non-literal/procedure node. Unable to get documentation.`;

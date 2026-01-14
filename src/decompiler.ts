@@ -2,6 +2,7 @@ import { ASTSExprNode, ASTProcedureNode, ASTLiteralNode, ASTProgram, ASTNode } f
 import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token } from "./token.js";
 import { Lexer } from "./lexer.js";
 import { DECOMPILER_CLOSING_ON_NEW_LINE } from "./globals.js";
+import { printDeep } from "./utils.js";
 
 interface RenderCtx {
     indent: number;
@@ -77,7 +78,7 @@ function ASTSExprNodeToSourceCode(ast: ASTSExprNode, ctx: RenderCtx, unexpand_ma
 }
 
 function ASTProcedureNodeToSourceCode(ast: ASTProcedureNode, ctx: RenderCtx) {
-    const params = `(${ast.params.join(" ")})`;
+    const params = `(${ast.params.map(p => p.name).join(" ")})`;
     const inner_ctx = { ...ctx, indent: ctx.indent + 1 };
     const bodies = ast.body.map(b => ASTToSourceCode(b, inner_ctx));
 

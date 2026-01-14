@@ -4,7 +4,7 @@ import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME } from
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool, ASTStr } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
-import { printDeep, toDisplay } from "./utils.js";
+import { toDisplay } from "./utils.js";
 
 function resolveName(names: string[]) {
     return [LANG_NAME.toLowerCase(), ...names].join(".");
@@ -464,8 +464,25 @@ const STDLIB: BuiltinSet = {
             doc: "Returns #t if sym is interned, #f otherwise.",
             arg_names: ["sym"]
         }],
-        ["void?", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
-        ["procedure?", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
+        ["void?", { min_args: 1, ret_type: TokenType.BOOL, arg_type: [TokenType.ANY], fn: (x: Token) => x.type === TokenType.VOID, doc: "Returns true if x is void, otherwise returns false.", arg_names: ["x"] }],
+        ["procedure?", {
+            min_args: 1,
+            ret_type: TokenType.BOOL,
+            arg_type: [TokenType.ANY],
+            env_param: true,
+            fn: (env: BracketEnvironment, x: Token) => {
+                if (x.type === TokenType.PROCEDURE)
+                    return true;
+
+                if (x.type === TokenType.IDENT) {
+                    return env.builtins.has(x.literal);
+                }
+
+                return false;
+            },
+            doc: "Returns true if x is a procedure, otherwise returns false.",
+            arg_names: ["x"]
+        }],
         ["values", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["call-with-values", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["match", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
