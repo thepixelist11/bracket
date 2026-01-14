@@ -3,6 +3,7 @@ import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMet
 import { TEMP_ENVIRONMENT_LABEL, STDOUT, BOOL_FALSE, BOOL_TRUE, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { TOKEN_PRINT_TYPE_MAP } from "./token.js";
 import { BracketEnvironment } from "./env.js";
+import { printDeep } from "./utils.js";
 
 export const JS_PRINT_TYPE_MAP: Record<string, string> = {
     "number": "Num",
@@ -359,7 +360,7 @@ export class Evaluator {
             const closure = new BracketEnvironment("", ctx, fn.closure); // TODO: Label
 
             for (let i = 0; i < args.length; i++)
-                closure.define(internSymbol(fn.params[i]), new ASTLiteralNode(args[i]));
+                closure.define(fn.params[i], new ASTLiteralNode(args[i]));
 
             let result = TokenVoid();
             for (const expr of fn.body) {

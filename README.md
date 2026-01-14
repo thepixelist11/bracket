@@ -20,7 +20,7 @@ Non-goals include strict conformance to any specific Scheme standard and product
 
 ### Syntax
 
-Bracket uses traditional s-expression syntax consistent with Scheme and Racket.  
+Bracket uses traditional s-expression syntax consistent with Scheme and Racket.
 Source code may be evaluated from files or interactively.
 
 ### Evaluation Model

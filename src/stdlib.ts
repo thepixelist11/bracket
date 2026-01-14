@@ -4,7 +4,7 @@ import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME } from
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool, ASTStr } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
-import { toDisplay } from "./utils.js";
+import { printDeep, toDisplay } from "./utils.js";
 
 function resolveName(names: string[]) {
     return [LANG_NAME.toLowerCase(), ...names].join(".");
@@ -400,13 +400,15 @@ const STDLIB: BuiltinSet = {
             min_args: 2,
             expander: (args: ASTNode[]): ASTNode => {
                 const [a, b] = args;
+                const tmp = ASTIdent(TokenUninternedSym());
+
                 return new ASTSExprNode(
                     ASTIdent("let"),
                     new ASTSExprNode(
-                        new ASTSExprNode(ASTIdent("tmp"), a),
+                        new ASTSExprNode(tmp, a),
                     ),
                     new ASTSExprNode(ASTIdent("set!"), a, b),
-                    new ASTSExprNode(ASTIdent("set!"), b, ASTIdent("tmp")),
+                    new ASTSExprNode(ASTIdent("set!"), b, tmp),
                 );
             },
             doc: "Exchanges the values of two mutable bindings.",
@@ -1365,7 +1367,7 @@ function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadat
 
         const name = (ident.first as ASTLiteralNode).tok.literal;
         const sym = (ident.first as ASTLiteralNode).tok.value as RuntimeSymbol;
-        const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.literal);
+        const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.value as RuntimeSymbol);
 
         const procedure = new ASTProcedureNode(name, params, body_nodes, env);
         const proc_token = TokenProc(procedure);
@@ -1390,12 +1392,12 @@ function evalLambda(args: ASTNode[], env: BracketEnvironment): Token {
     if (!(params_node instanceof ASTSExprNode))
         throw new Error(`lambda: bad syntax; rest arguments are not yet supported`);
 
-    const params: string[] = [];
+    const params: RuntimeSymbol[] = [];
 
     for (const p of params_node.elements) {
         if (!(p instanceof ASTLiteralNode) || p.tok.type !== TokenType.IDENT)
             throw new Error(`lambda: bad syntax; parameters must be identifiers`);
-        params.push(p.tok.literal);
+        params.push(p.tok.value as RuntimeSymbol);
     }
 
     const proc = new ASTProcedureNode(

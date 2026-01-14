@@ -1,4 +1,4 @@
-import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE, internSymbol } from "./token.js";
+import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE, internSymbol, RuntimeSymbol } from "./token.js";
 import { BracketEnvironment } from "./env.js";
 
 interface ASTBase {
@@ -36,12 +36,12 @@ export class ASTSExprNode implements ASTBase {
 }
 
 export class ASTProcedureNode implements ASTBase {
-    public params: string[];
+    public params: RuntimeSymbol[];
     public body: ASTNode[];
     public closure: BracketEnvironment;
     public meta?: TokenMetadata;
 
-    constructor(name: string, params: string[], body: ASTNode[], env: BracketEnvironment) {
+    constructor(name: string, params: RuntimeSymbol[], body: ASTNode[], env: BracketEnvironment) {
         this.params = params;
         this.body = body;
         this.closure = new BracketEnvironment(name, env.ctx, env);
@@ -55,7 +55,7 @@ export class ASTProgram {
 
 export type ASTNode = ASTLiteralNode | ASTSExprNode | ASTProcedureNode;
 
-export function ASTIdent(name: string, meta?: TokenMetadata): ASTLiteralNode {
+export function ASTIdent(name: string | Token<TokenType.SYM>, meta?: TokenMetadata): ASTLiteralNode {
     return new ASTLiteralNode(TokenIdent(name, meta));
 }
 

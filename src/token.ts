@@ -164,7 +164,14 @@ export function TokenUninternedSym(sym?: string, num_suffix = false, meta?: Toke
 };
 export function TokenBool(bool: boolean | string, meta?: TokenMetadata) { return new Token(TokenType.BOOL, (typeof bool === "string" ? bool === BOOL_TRUE : bool) ? BOOL_TRUE : BOOL_FALSE, defaultMeta(meta), {}) };
 export function TokenStr(str: string, meta?: TokenMetadata) { return new Token(TokenType.STR, str, defaultMeta(meta), {}) };
-export function TokenIdent(ident: string, meta?: TokenMetadata) { return new Token(TokenType.IDENT, ident, defaultMeta(meta), internSymbol(ident)) };
+export function TokenIdent(ident: string | Token<TokenType.SYM>, meta?: TokenMetadata) {
+    if (typeof ident === "string") {
+        return new Token(TokenType.IDENT, ident, defaultMeta(meta), internSymbol(ident))
+    } else {
+        return new Token(TokenType.IDENT, ident.literal, defaultMeta(meta), ident.value);
+    }
+};
+
 export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, defaultMeta(meta), {}) };
 export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), proc) };
 export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
