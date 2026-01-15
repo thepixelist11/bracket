@@ -92,3 +92,7 @@ export function toDisplay(tok: Token): string {
         return tok.literal.toString();
     }
 }
+
+export function stripNewlines(str: string, replacement = "\\n"): string {
+    return str.replaceAll(/\n/g, replacement);
+}

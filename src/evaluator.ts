@@ -1,9 +1,9 @@
 import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram } from "./ast.js";
-import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, RuntimeSymbol, internSymbol } from "./token.js";
+import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, RuntimeSymbol, TokenMulti } from "./token.js";
 import { TEMP_ENVIRONMENT_LABEL, STDOUT, BOOL_FALSE, BOOL_TRUE, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { TOKEN_PRINT_TYPE_MAP } from "./token.js";
 import { BracketEnvironment } from "./env.js";
-import { printDeep } from "./utils.js";
+import { stripNewlines } from "./utils.js";
 
 export const JS_PRINT_TYPE_MAP: Record<string, string> = {
     "number": "Num",
@@ -23,6 +23,7 @@ export const ARGUMENT_TYPE_COERCION: Record<ValueType, (tok: Token, env?: Bracke
     [TokenType.IDENT]: (tok: Token) => tok,
     [TokenType.PROCEDURE]: (tok: Token, env?: BracketEnvironment, ctx?: InterpreterContext) => Evaluator.procedureToJS(tok, env!, ctx!),
     [TokenType.LIST]: (tok: Token) => tok.value,
+    [TokenType.MULTI]: (tok: Token) => tok.value,
 } as const;
 
 export const RETURN_TYPE_COERCION: Record<ValueType, (result: any) => string> = {
@@ -37,6 +38,7 @@ export const RETURN_TYPE_COERCION: Record<ValueType, (result: any) => string> = 
     [TokenType.IDENT]: (result: any) => result,
     [TokenType.PROCEDURE]: (result: any) => result,
     [TokenType.LIST]: (result: any) => result,
+    [TokenType.MULTI]: (result: any) => result,
 } as const;
 
 export const VALUE_TYPE_JS_TYPE_MAP: Record<ValueType, string> = {
@@ -51,6 +53,7 @@ export const VALUE_TYPE_JS_TYPE_MAP: Record<ValueType, string> = {
     [TokenType.IDENT]: "string",
     [TokenType.PROCEDURE]: "object",
     [TokenType.LIST]: "object",
+    [TokenType.MULTI]: "object",
 } as const;
 
 export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
@@ -294,14 +297,14 @@ export class Evaluator {
                 if (arg.type === TokenType.PROCEDURE || arg.type === TokenType.IDENT) {
                     typed_args.push((current_raw_type === "token") ? arg : ARGUMENT_TYPE_COERCION[current_arg_type](args[i], env, ctx));
                 } else {
-                    throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${args[i].toString()}`);
+                    throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[args[i].type]} ${stripNewlines(args[i].toString(), " ")}`);
                 }
 
                 continue;
             }
 
             if (arg.type !== current_arg_type) {
-                throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[arg.type]} ${args[i].toString()}`);
+                throw new Error(`Unexpected type. Expected ${TOKEN_PRINT_TYPE_MAP[current_arg_type]}, got ${TOKEN_PRINT_TYPE_MAP[arg.type]} ${stripNewlines(args[i].toString(), " ")}`);
             }
 
             typed_args.push((current_raw_type === "normal") ? ARGUMENT_TYPE_COERCION[current_arg_type](arg, env, ctx) : args[i]);
@@ -328,6 +331,13 @@ export class Evaluator {
                 throw new Error(`Unexpected return type. Expected ${TOKEN_PRINT_TYPE_MAP[TokenType.LIST]}, got ${JS_PRINT_TYPE_MAP[typeof result]} (${result})`);
 
             return TokenList(result, meta);
+        }
+
+        if (builtin.ret_type === TokenType.MULTI) {
+            if (!Array.isArray(result))
+                throw new Error(`Unexpected return type. Expected ${TOKEN_PRINT_TYPE_MAP[TokenType.MULTI]}, got ${JS_PRINT_TYPE_MAP[typeof result]} (${result})`);
+
+            return TokenMulti(result, meta);
         }
 
         if (typeof result !== VALUE_TYPE_JS_TYPE_MAP[builtin.ret_type])

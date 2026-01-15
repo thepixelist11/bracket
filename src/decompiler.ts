@@ -127,6 +127,17 @@ function ASTLiteralNodeToSourceCode(ast: ASTLiteralNode, ctx: RenderCtx) {
             return ASTProcedureNodeToSourceCode(tok.value as ASTProcedureNode, ctx);
         }
 
+        case TokenType.MULTI: {
+            const toks = tok.value as Token[];
+            if (toks.length === 0) return "(values)";
+            let result = "(values ";
+
+            for (const tok of toks)
+                result += ASTLiteralNodeToSourceCode(new ASTLiteralNode(tok), ctx);
+
+            return result.trim(); + ")";
+        }
+
         case TokenType.LIST:
         case TokenType.FORM: {
             const toks = tok.value as Token[];

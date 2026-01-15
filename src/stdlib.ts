@@ -1,5 +1,5 @@
 import { BuiltinFunction } from "./evaluator.js";
-import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata, TOKEN_PRINT_TYPE_MAP, TokenError, TokenStr, TokenSym, RuntimeSymbol, TokenUninternedSym } from "./token.js";
+import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata, TOKEN_PRINT_TYPE_MAP, TokenError, TokenStr, TokenSym, RuntimeSymbol, TokenUninternedSym, TokenMulti } from "./token.js";
 import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool, ASTStr } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
@@ -483,8 +483,33 @@ const STDLIB: BuiltinSet = {
             doc: "Returns true if x is a procedure, otherwise returns false.",
             arg_names: ["x"]
         }],
-        ["values", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
-        ["call-with-values", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
+        ["values", {
+            min_args: 0,
+            variadic: true,
+            ret_type: TokenType.MULTI,
+            arg_type: [TokenType.ANY],
+            fn: (...args: Token[]) => args,
+            doc: "Returns the given v's.",
+            arg_names: ["v"]
+        }],
+        ["call-with-values", {
+            min_args: 2,
+            ret_type: TokenType.ANY,
+            arg_type: [TokenType.PROCEDURE, TokenType.PROCEDURE],
+            fn: (generator: () => Token, receiver: (...args: unknown[]) => unknown) => {
+                const gen_res = generator();
+
+                let params: Token[];
+                if (gen_res.type === TokenType.MULTI)
+                    params = gen_res.value as Token[];
+                else
+                    params = [gen_res];
+
+                return receiver(...params);
+            },
+            doc: "Calls",
+            arg_names: ["v"]
+        }],
         ["match", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["case", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
     ])

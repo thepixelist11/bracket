@@ -34,6 +34,7 @@ export const TOKEN_PRINT_TYPE_MAP: Record<TokenType, string> = {
     [TokenType.QUOTE]: "Quote",
     [TokenType.FORM]: "Form",
     [TokenType.META]: "Meta",
+    [TokenType.MULTI]: "Multi",
 } as const;
 
 export interface TokenMetadata { row: number, col: number, [key: string]: string | number }
@@ -49,6 +50,7 @@ type TokenValueTypeMap<T extends TokenType> =
     T extends TokenType.IDENT ? RuntimeSymbol :
     T extends TokenType.FORM ? Token[] :
     T extends TokenType.LIST ? Token[] :
+    T extends TokenType.MULTI ? Token[] :
     T extends TokenType.META ? TokenMetadataInjector :
     {};
 
@@ -113,8 +115,10 @@ export class Token<T extends TokenType = TokenType> {
                 return `${nested_list ? "" : "'"}(${(this.value as Token[]).map(t => t.toString(true)).join(" ")})`;
             case TokenType.ANY:
                 return `#<any>`
+            case TokenType.MULTI:
+                return (this.value as Token[]).map(t => t.toString(true)).join("\n");
             default:
-                throw new Error(`unhandled token type: ${TOKEN_PRINT_TYPE_MAP[this.type]}`);
+                return `unhandled token type: ${TOKEN_PRINT_TYPE_MAP[this.type]}`;
         }
     }
 
@@ -141,6 +145,7 @@ export const enum TokenType {
     QUOTE,
     FORM,
     META,
+    MULTI,
 };
 
 export type TokenMetadataInjector = { meta: { [key: string]: string | number }, pred?: (tok: Token) => boolean };
@@ -177,6 +182,7 @@ export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return
 export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
 export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.FORM, "", defaultMeta(meta), val) };
 export function TokenMeta(injector: TokenMetadataInjector, meta?: TokenMetadata) { return new Token(TokenType.META, "", defaultMeta(meta), injector) };
+export function TokenMulti(toks: Token[], meta?: TokenMetadata) { return new Token(TokenType.MULTI, "", defaultMeta(meta), toks) };
 
 export type ValueType =
     | TokenType.ANY
@@ -189,5 +195,6 @@ export type ValueType =
     | TokenType.CHAR
     | TokenType.IDENT
     | TokenType.LIST
+    | TokenType.MULTI
     | TokenType.PROCEDURE;
 
