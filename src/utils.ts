@@ -44,6 +44,18 @@ export class Output extends Writable {
             tar.reset();
         }
     }
+
+    warn(msg: string) {
+        this.write(`warning: ${msg}\n`);
+    }
+
+    error(msg: string | Error) {
+        let out = msg;
+        if (msg instanceof Error)
+            out = (msg as any).message ?? String(msg);
+
+        this.write(`error: ${out}\n`);
+    }
 }
 
 export function printDeep(obj: unknown, depth = 12) {

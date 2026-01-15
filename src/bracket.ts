@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { BracketEnvironment } from "./env.js";
-import { DEFAULT_HELP_LABEL, FEAT_IO, FEAT_REPL, HELP_TOPICS, InterpreterContext, LANG_NAME, REPL_ENVIRONMENT_LABEL, VERSION_NUMBER, getDefaultReaderFeatures } from "./globals.js";
+import { DEFAULT_HELP_LABEL, FEAT_IO, FEAT_REPL, HELP_TOPICS, InterpreterContext, LANG_NAME, REPL_ENVIRONMENT_LABEL, STDOUT, VERSION_NUMBER, getDefaultReaderFeatures } from "./globals.js";
 import { REPL } from "./repl.js";
 import { runFile } from "./run_file.js";
 import { Output } from "./utils.js";
@@ -201,8 +201,8 @@ const CLI_ARGS = [
     }
 ] as const satisfies readonly CLIArg[];
 
-function displayVersion() { console.log(`${LANG_NAME} v${VERSION_NUMBER}`); }
-function displayHelp() { console.log(HELP_TOPICS[DEFAULT_HELP_LABEL]); }
+function displayVersion() { STDOUT.write(`${LANG_NAME} v${VERSION_NUMBER}\n`); }
+function displayHelp() { STDOUT.write(`${HELP_TOPICS[DEFAULT_HELP_LABEL]}\n`); }
 
 (async function main() {
     const args: ParsedArgs<typeof CLI_ARGS> = parseArgs(CLI_ARGS);

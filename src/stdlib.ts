@@ -1,6 +1,6 @@
 import { BuiltinFunction } from "./evaluator.js";
 import { TokenType, TokenIdent, Token, TokenList, TokenNum, TokenBool, TokenVoid, TokenProc, BOOL_FALSE, TokenMetadata, TOKEN_PRINT_TYPE_MAP, TokenError, TokenStr, TokenSym, RuntimeSymbol, TokenUninternedSym, TokenMulti } from "./token.js";
-import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME } from "./globals.js";
+import { BUILTIN_CUSTOM_SET, FEAT_SYS_EXEC, InterpreterContext, LANG_NAME, STDOUT } from "./globals.js";
 import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTIdent, ASTBool, ASTStr } from "./ast.js";
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
@@ -23,17 +23,17 @@ export class Builtins {
             const resolved = resolveName(set.names);
 
             if (set.names.some(n => n.includes("."))) {
-                console.warn(`Could not include module "${resolved}". Periods are not allowed in module names`);
+                STDOUT.warn(`Could not include module "${resolved}". Periods are not allowed in module names`);
                 continue;
             }
 
             if (set.names.length > 0 && set.names[0].startsWith("__")) {
-                console.warn(`Could not include module "${resolved}". Module names of the form __NAME are reserved for internal use.`);
+                STDOUT.warn(`Could not include module "${resolved}". Module names of the form __NAME are reserved for internal use.`);
                 continue;
             }
 
             if (this.map.has(resolved)) {
-                console.warn(`Found duplicate module "${resolved}". Using the original module.`);
+                STDOUT.warn(`Found duplicate module "${resolved}". Using the original module.`);
                 continue;
             }
 

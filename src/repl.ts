@@ -80,7 +80,7 @@ class REPLCommandTable {
 
     register(command: REPLCommand) {
         if (this.command_ids.has(command.dispatch))
-            console.warn(`REPL command ${command.dispatch} already exists; overwriting.`);
+            STDOUT.warn(`REPL command ${command.dispatch} already exists; overwriting.`);
 
         this.command_ids.set(command.dispatch, ++this.cur_id);
         this.commands.set(this.cur_id, command);
@@ -89,7 +89,7 @@ class REPLCommandTable {
         if (command.aliases) {
             for (const alias of command.aliases) {
                 if (this.command_ids.has(alias))
-                    console.warn(`REPL command ${alias} already exists; overwriting.`);
+                    STDOUT.warn(`REPL command ${alias} already exists; overwriting.`);
 
                 this.command_ids.set(alias, this.cur_id);
             }
@@ -618,7 +618,7 @@ export class REPL {
         process.on("SIGUSR1", exit);
         process.on("SIGUSR2", exit);
         process.on("uncaughtException", err => {
-            console.error(err);
+            STDOUT.error(err);
             exit(1);
         });
 
