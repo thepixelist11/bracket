@@ -157,7 +157,7 @@ const STDLIB: BuiltinSet = {
                 // evaluated for side effects, though only value is returned.
 
                 const test = (args[0] as ASTSExprNode).first;
-                const value = (args[0] as ASTSExprNode).last;
+                const bodies = (args[0] as ASTSExprNode).rest;
                 const rest = args.slice(1);
 
                 if (
@@ -165,13 +165,33 @@ const STDLIB: BuiltinSet = {
                     test.tok.type === TokenType.IDENT &&
                     test.tok.literal === "else"
                 ) {
-                    return value;
+                    if (bodies.length === 1)
+                        return bodies[0];
+
+                    return new ASTSExprNode(
+                        ASTIdent("begin"),
+                        ...bodies
+                    );
                 }
+
+                if (bodies.length === 1)
+                    return new ASTSExprNode(
+                        ASTIdent("if"),
+                        test,
+                        bodies[0],
+                        rest.length > 0 ? new ASTSExprNode(
+                            TokenIdent("cond"),
+                            ...rest,
+                        ) : ASTVoid(),
+                    )
 
                 return new ASTSExprNode(
                     ASTIdent("if"),
                     test,
-                    value,
+                    new ASTSExprNode(
+                        ASTIdent("begin"),
+                        ...bodies
+                    ),
                     rest.length > 0 ? new ASTSExprNode(
                         TokenIdent("cond"),
                         ...rest,

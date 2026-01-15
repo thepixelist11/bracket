@@ -129,7 +129,7 @@ Bracket provides an interactive REPL designed for experimentation, learning, and
   Dynamically inspect functions, variables, and macros:
   - `,doc <identifier>`: Shows documentation for a symbol.
   - `,source <identifier>`: Displays the macro-expanded source code for a symbol.
-  - `,apropos <search-term>`: Searches the environment for identifiers containing a substrin
+  - `,apropos <search-term>`: Searches the environment for identifiers containing a substring
 
 - **Environment Exploration**
   Examine the current environment and bindings:
@@ -142,6 +142,12 @@ Bracket provides an interactive REPL designed for experimentation, learning, and
   - `,load <filepath>`: Load external Bracket files and import their bindings.
   - `,clear`: Clears the REPL terminal for a clean workspace.
   - `,exit` / `,quit`: Exit the REPL.
+
+- **File Navigation**
+  - `,pwd`: Displays the current working directory.
+  - `,cd <dir>`: Changes the current working directory.
+  - `,ls <[dir]>`: Lists files and directories in the specified directory or the current directory.
+  - `,cat <path>`: Prints the contents of the specified file.
 
 - **User-Friendly Feedback**
   - Typos in identifiers trigger suggestions.
@@ -233,13 +239,16 @@ identity: (identity arg0)
 Produces its argument unchanged.
 
 when: (when arg0 args...)
-Evaluates the body expressions when the test expression is not false; otherwise produces void.
+Evaluates the body expressions when the test expression is not false;
+ otherwise produces void.
 
 unless: (unless arg0 args...)
-Evaluates the body expressions when the test expression is false; otherwise produces void.
+Evaluates the body expressions when the test expression is false; otherwise
+ produces void.
 
 cond: (cond args...)
-Evaluates test-value clauses in order and produces the value of the first clause who's test is not false. An else clause matches unconditionally.
+Evaluates test-value clauses in order and produces the value of the first
+ clause who's test is not false. An else clause matches unconditionally.
 
 begin: (begin args...)
 Evaluates expressions in order and produces the value of the last expression.
@@ -248,7 +257,8 @@ local: (local arg0 args...)
 Introduces local definitions only visible within the body expressions.
 
 let: (let arg0 args...)
-Binds identifiers to values and evaluates the body expressions with those bindings.
+Binds identifiers to values and evaluates the body expressions with those
+ bindings.
 
 set!: (set! special_function)
 Mutates an existing binding to refer to a new value.
@@ -257,7 +267,8 @@ else: (else args...)
 For use with cond.
 
 if: (if special_function)
-Evaluates the test expression and evaluates the `if` branch if not false and the `then` branch otherwise.
+Evaluates the test expression and evaluates the `if` branch if not false and
+ the `then` branch otherwise.
 
 define: (define special_function)
 Binds a value to an identifier in the current environment.
@@ -269,7 +280,8 @@ Produces a procedure with the given parameters and body.
 Produces a procedure with the given parameters and body.
 
 eq?: (eq? arg0 arg1)
-Produces true if a and b are the same object or represent the same immediate value.
+Produces true if a and b are the same object or represent the same immediate
+ value.
 
 eqv?: (eqv? arg0 arg1)
 Produces true if a and b are the same atomic value or the same object.
@@ -281,7 +293,8 @@ swap!: (swap! arg0 arg1)
 Exchanges the values of two mutable bindings.
 
 error: (error args...)
-Throws an error with its message being the space-delimited concatenation of all arguments printed as printed by display.
+Throws an error with its message being the space-delimited concatenation of
+ all arguments printed as printed by display.
 
 void: (void args...)
 Produces a void literal.
@@ -290,7 +303,8 @@ symbol?: (symbol? arg0)
 Produces true if x is a symbol.
 
 gensym: (gensym args...)
-Returns a new unique symbol with an automatically generated name. base is used as an optional prefix symbol or string.
+Returns a new unique symbol with an automatically generated name. base is used
+ as an optional prefix symbol or string.
 
 symbol-interned?: (symbol-interned? arg0)
 Returns #t if sym is interned, #f otherwise.
@@ -312,7 +326,8 @@ match: (match)
 case: (case)
 
 cond-expand: (cond-expand args...)
-Conditionally expands code based on feature availability. Supports and, or, and not operators.
+Conditionally expands code based on feature availability. Supports and, or,
+ and not operators.
 </code></pre>
 </details>
 
@@ -332,7 +347,8 @@ Multiplies numbers from left to right
 Divides numbers from left to right.
 
 quotient: (quotient arg0 arg1)
-Produces the result of the integer division of a and b. That is, a/b truncated to an integer.
+Produces the result of the integer division of a and b. That is, a/b truncated
+ to an integer.
 
 remainder: (remainder arg0 arg1)
 Produces the remainder when a is divided by b with the same sign as a.
@@ -430,7 +446,8 @@ exp: (exp arg0)
 Produces the result of e^x.
 
 log: (log args...)
-Produces the result of ln(a) if b is not specified, and log_b(a) if b is specified.
+Produces the result of ln(a) if b is not specified, and log_b(a) if b is
+ specified.
 
 sin: (sin arg0)
 Produces the sine of x.
@@ -523,7 +540,9 @@ random-range: (random-range)
 <details>
 <pre><code>
 sys-exec: (sys-exec args...)
-Executes a system command with space-delimited arguments and both prints and returns STDOUT. Can only be used if the `sys-eval` feature is set and the environment is not sandboxed.
+Executes a system command with space-delimited arguments and both prints and
+ returns STDOUT. Can only be used if the `sys-eval` feature is set and the
+ environment is not sandboxed.
 
 getenv: (getenv)
 
@@ -543,10 +562,12 @@ cwd: (cwd)
 <details>
 <pre><code>
 check-expect: (check-expect arg0 arg1)
-Checks whether the value of the expr expression is equal? to the value produced by expected. If not, an error will be thrown.
+Checks whether the value of the expr expression is equal? to the value
+ produced by expected. If not, an error will be thrown.
 
 check-satisfied: (check-satisfied arg0 arg1)
-Checks whether the result of pred applied to expr is not false. If it is, an error will be thrown.
+Checks whether the result of pred applied to expr is not false. If it is, an
+ error will be thrown.
 
 check-equal?: (check-equal?)
 
@@ -575,10 +596,12 @@ false: #f
 The boolean value false.
 
 and: (and args...)
-Evaluates expressions from left to right and produces the first false value, or the last value if none are false. Short-circuits.
+Evaluates expressions from left to right and produces the first false value,
+ or the last value if none are false. Short-circuits.
 
 or: (or args...)
-Evaluates expressions from left to right and produces the first non-false value, or the true if none are false. Short-circuits.
+Evaluates expressions from left to right and produces the first non-false
+ value, or the true if none are false. Short-circuits.
 
 xor: (xor arg0 arg1)
 Produces true if exactly one of a or b is not false.
@@ -737,40 +760,58 @@ count: (count)
 <details>
 <pre><code>
 build-list: (build-list arg0 arg1)
-Produces a list of length n by applying a procedure to all indices from 0 to n - 1.
+Produces a list of length n by applying a procedure to all indices from 0 to n
+ - 1.
 
 make-list: (make-list arg0 arg1)
 Produces a list of length n with each element equal to v.
 
 list-update: (list-update arg0 arg1 arg2)
-Produces a list with the element at pos replaced by the result of applying updater to that element.
+Produces a list with the element at pos replaced by the result of applying
+ updater to that element.
 
 list-set: (list-set arg0 arg1 arg2)
 Produces a list with the element at pos replaced by val.
 
 map: (map args...)
-Applies a procedure element-wise to one or more lists and produces a list of results. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Applies a procedure element-wise to one or more lists and produces a list of
+ results. All lists must be of the same length and the i-th argument will be
+ the current element of the i-th list.
 
 andmap: (andmap args...)
-Applies a predicate element-wise and produces false on the first false result; otherwise produces the last result. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Applies a predicate element-wise and produces false on the first false result;
+ otherwise produces the last result. All lists must be of the same length and
+ the i-th argument will be the current element of the i-th list.
 
 ormap: (ormap args...)
-Applies a predicate element-wise and produces true on the first non-false result; otherwise produces false. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Applies a predicate element-wise and produces true on the first non-false
+ result; otherwise produces false. All lists must be of the same length and
+ the i-th argument will be the current element of the i-th list.
 
 for-each: (for-each args...)
-Applies a procedure element-wise for side effects and produces void. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Applies a procedure element-wise for side effects and produces void. All lists
+ must be of the same length and the i-th argument will be the current element
+ of the i-th list.
 
 foldl: (foldl args...)
-Reduces lists from left to right using a combining procedure and an initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Reduces lists from left to right using a combining procedure and an initial
+ value. All lists must be of the same length and the i-th argument will be the
+ current element of the i-th list.
 
 foldr: (foldr args...)
-Reduces lists from right to left using a combining procedure and an initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Reduces lists from right to left using a combining procedure and an initial
+ value. All lists must be of the same length and the i-th argument will be the
+ current element of the i-th list.
 
 running-foldl: (running-foldl args...)
-Produces a list of intermediate left-fold results, including the initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Produces a list of intermediate left-fold results, including the initial
+ value. All lists must be of the same length and the i-th argument will be the
+ current element of the i-th list.
 
 running-foldr: (running-foldr args...)
-Produces a list of intermediate right-fold results, including the initial value. All lists must be of the same length and the i-th argument will be the current element of the i-th list.
+Produces a list of intermediate right-fold results, including the initial
+ value. All lists must be of the same length and the i-th argument will be the
+ current element of the i-th list.
 
 filter: (filter arg0 arg1)
 Produces a list of elements for which the predicate produces true.
@@ -827,7 +868,8 @@ string-append: (string-append args...)
 Concatenates strings from left to right.
 
 substring: (substring arg0 args...)
-Produces the substring of str from index s up to, but not including e or the end of the string if e is not defined.
+Produces the substring of str from index s up to, but not including e or the
+ end of the string if e is not defined.
 
 string=?: (string=? args...)
 Produces true if all strings are equal.
@@ -873,13 +915,16 @@ print: (print arg0)
 Writes the textual representation of a value to the standard output.
 
 println: (println arg0)
-Writes the textual representation of a value to the standard output with a trailing newline.
+Writes the textual representation of a value to the standard output with a
+ trailing newline.
 
 display: (display arg0)
-Writes the literal value or a representation of the value if unprintable to the standard output.
+Writes the literal value or a representation of the value if unprintable to
+ the standard output.
 
 displayln: (displayln arg0)
-Writes the literal value or a representation of the value if unprintable to the standard output with a trailing newline.
+Writes the literal value or a representation of the value if unprintable to
+ the standard output with a trailing newline.
 
 newline: (newline)
 

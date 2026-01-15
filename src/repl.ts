@@ -6,9 +6,11 @@ import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
 import { ASTToSourceCode } from "./decompiler.js";
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE, FEAT_IO, FEAT_REPL, FEAT_SYS_EXEC } from "./globals.js";
-import { printDeep, Output, exit, editDistance } from "./utils.js";
+import { printDeep, Output, exit, editDistance, wrapLines } from "./utils.js";
 import { runFile } from "./run_file.js";
 import fs from "fs";
+import path from "path";
+import os from "os";
 
 type REPLCommandFnContext = { stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable, repl: REPL };
 type REPLCommand =
@@ -41,31 +43,6 @@ function generateDocumentation(name: string, doc: string = "", is_procedure: boo
     if (imported_by !== "") out += `\n\nImported by: ${imported_by}`;
     return out;
 }
-
-function wrapLines(str: string, max_len: number = REPL_COMMAND_MAX_LINE_LENGTH) {
-    if (str === "\n") return "\n";
-
-    const pattern = new RegExp(`\\n|[^\\n]{1,${max_len}}(?=\\s|$)|[^\\n]{${max_len}}`, "g");
-
-    let result = "";
-    let first = true;
-
-    for (const m of str.matchAll(pattern)) {
-        const chunk = m[0];
-
-        if (chunk === "\n") {
-            result += "\n";
-            first = true;
-        } else {
-            if (!first) result += "\n";
-            result += chunk;
-            first = false;
-        }
-    }
-
-    return result;
-}
-
 
 class REPLCommandTable {
     command_ids = new Map<string, number>();
@@ -184,6 +161,87 @@ const REPL_COMMANDS = new REPLCommandTable([
             const { env, stdout } = ctx;
 
             runFile(args[0], env, stdout);
+        }
+    },
+    {
+        dispatch: "pwd",
+        doc: "Displays the current working directory.",
+        fn: () => {
+            return process.cwd();
+        }
+    },
+    {
+        dispatch: "cd",
+        aliases: ["chdir"],
+        doc: "Changes the current working directory.",
+        manual_write: true,
+        arg_names: ["dir"],
+        fn: (args) => {
+            let pth = (args[0] ?? "").trim();
+
+            if (pth.startsWith("~")) {
+                pth = os.homedir() + pth.slice(1);
+            }
+
+            if (!fs.existsSync(pth))
+                throw new Error(`${pth} does not exist.`);
+
+            if (!fs.statSync(pth).isDirectory())
+                throw new Error(`${pth} is not a directory.`);
+
+            process.chdir(pth);
+        }
+    },
+    {
+        dispatch: "ls",
+        doc: "Lists files and directories in the specified directory. If no directory is specified, the contents of the current working directory will be listed.",
+        arg_names: ["dir"],
+        arg_optional: [true],
+        fn: (args) => {
+            let out = "";
+            const dir_path = path.resolve(args[0] ?? ".");
+
+            if (!fs.existsSync(dir_path))
+                throw new Error(`${dir_path} does not exist.`);
+
+            if (!fs.statSync(dir_path).isDirectory())
+                throw new Error(`${dir_path} is not a directory.`);
+
+            const paths = fs.readdirSync(dir_path).map(p => path.resolve(dir_path, p));
+
+            const files = [];
+            const dirs = [];
+
+            for (const pth of paths) {
+                if (fs.statSync(pth).isDirectory())
+                    dirs.push(`${path.basename(pth)}/`);
+                else
+                    files.push(`${path.basename(pth)}`);
+            }
+
+            for (const p of [...dirs.sort(), ...files.sort()])
+                out += p + "\n";
+
+            return out;
+        }
+    },
+    {
+        dispatch: "cat",
+        doc: "Outputs the contents of the specified file.",
+        arg_names: ["path"],
+        fn: (args) => {
+            if (!args[0])
+                throw new Error(`No file specified.`);
+
+            const file_path = path.resolve(args[0]);
+
+            if (!fs.existsSync(file_path))
+                return `file ${file_path} does not exist.`;
+
+            if (!fs.statSync(file_path).isFile())
+                return `${file_path} is not a file.`;
+
+            return fs.readFileSync(file_path, "utf8");
         }
     },
     {

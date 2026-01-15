@@ -1,5 +1,6 @@
 import * as stdlib from "../bin/stdlib.js";
 import { TokenVoid } from "../bin/token.js";
+import { wrapLines } from "../bin/utils.js";
 
 const DOCS = {};
 
@@ -46,7 +47,7 @@ for (const mod in DOCS) {
 
     const list = [];
     for (const fn in docs) {
-        list.push(htmlEscape(docs[fn].trimEnd()));
+        list.push(wrapLines(htmlEscape(docs[fn].trimEnd())));
     }
 
     console.log(list.join("\n\n"));
