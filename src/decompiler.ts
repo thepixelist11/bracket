@@ -133,9 +133,9 @@ function ASTLiteralNodeToSourceCode(ast: ASTLiteralNode, ctx: RenderCtx) {
             let result = "(values ";
 
             for (const tok of toks)
-                result += ASTLiteralNodeToSourceCode(new ASTLiteralNode(tok), ctx);
+                result += ASTLiteralNodeToSourceCode(new ASTLiteralNode(tok), ctx) + " ";
 
-            return result.trim(); + ")";
+            return result.trim() + ")";
         }
 
         case TokenType.LIST:
