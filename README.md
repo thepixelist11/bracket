@@ -295,17 +295,24 @@ Returns a new unique symbol with an automatically generated name. base is used a
 symbol-interned?: (symbol-interned? arg0)
 Returns #t if sym is interned, #f otherwise.
 
-void?: (void?)
+void?: (void? arg0)
+Returns true if x is void, otherwise returns false.
 
-procedure?: (procedure?)
+procedure?: (procedure? arg0)
+Returns true if x is a procedure, otherwise returns false.
 
-values: (values)
+values: (values args...)
+Returns the given v's.
 
-call-with-values: (call-with-values)
+call-with-values: (call-with-values arg0 arg1)
+Calls
 
 match: (match)
 
 case: (case)
+
+cond-expand: (cond-expand args...)
+Conditionally expands code based on feature availability. Supports and, or, and not operators.
 </code></pre>
 </details>
 

@@ -27,30 +27,30 @@ export const DECOMPILER_CLOSING_ON_NEW_LINE = false as const;
 export const FD_SHEBANG = "exec_with" as const;
 export const FD_LANGUAGE = "language" as const;
 
-export const FEAT_OS_LINUX = "os:linux" as const;
-export const FEAT_OS_WINDOWS = "os:windows" as const;
-export const FEAT_OS_MACOS = "os:macos" as const;
+export const FEAT_OS_LINUX = "linux" as const;
+export const FEAT_OS_WINDOWS = "windows" as const;
+export const FEAT_OS_MACOS = "macos" as const;
 
-export const FEAT_ARCH_x86_64 = "arch:x86_64" as const;
-export const FEAT_ARCH_ARM = "arch:arm64" as const;
+export const FEAT_ARCH_x86_64 = "x86_64" as const;
+export const FEAT_ARCH_ARM = "arm64" as const;
 
-export const FEAT_ENDIAN_LITTLE = "endian:le" as const;
-export const FEAT_ENDIAN_BIG = "endian:be" as const;
+export const FEAT_ENDIAN_LITTLE = "little-endian" as const;
+export const FEAT_ENDIAN_BIG = "big-endian" as const;
 
-export const FEAT_ENV_DEVELOPMENT = "env:development" as const;
-export const FEAT_ENV_PRODUCTION = "env:production" as const;
-export const FEAT_ENV_DEBUG = "env:debug" as const;
+export const FEAT_ENV_DEVELOPMENT = "development" as const;
+export const FEAT_ENV_PRODUCTION = "production" as const;
+export const FEAT_ENV_DEBUG = "debug" as const;
 
 export const FEAT_SHEBANG = "shebang" as const;
 export const FEAT_UNICODE = "unicode" as const;
 export const FEAT_VERTICAL_BARS = "vbars" as const;
 
-export const FEAT_CASE_INSENSITIVE = "case:insensitive" as const;
+export const FEAT_CASE_INSENSITIVE = "insensitive" as const;
 
-export const FEAT_COMMENTS_SEMICOLON = "comments:semicolon" as const;
-export const FEAT_COMMENTS_BLOCK = "comments:block" as const;
-export const FEAT_COMMENTS_NESTED = "comments:nested" as const;
-export const FEAT_COMMENTS_DATUM = "comments:datum" as const;
+export const FEAT_COMMENTS_SEMICOLON = "comments-semicolon" as const;
+export const FEAT_COMMENTS_BLOCK = "comments-block" as const;
+export const FEAT_COMMENTS_NESTED = "comments-nested" as const;
+export const FEAT_COMMENTS_DATUM = "comments-datum" as const;
 
 export const FEAT_READER_COND = "reader:cond" as const;
 export const FEAT_READER_CASE_FOLDING = "reader:case-folding" as const;
@@ -61,12 +61,12 @@ export const FEAT_READER_SYNTAX_QUOTE = "reader:syntax-quote" as const;
 export const FEAT_READER_QUASIQUOTE = "reader:quasiquote" as const;
 export const FEAT_READER_UNQUOTE_SPLICING = "reader:unquote-splicing" as const;
 
-export const FEAT_IMPL_NAME = (n: string) => `impl:name:${n}` as const;
-export const FEAT_IMPL_VERSION = (n: string) => `impl:version:${n}` as const;
+export const FEAT_IMPL_NAME = (n: string) => `name:${n}` as const;
+export const FEAT_IMPL_VERSION = (n: string) => `version:${n}` as const;
 
-export const FEAT_VM_BYTECODE = "vm:bytecode" as const;
-export const FEAT_GC_PRECISE = "gc:precise" as const;
-export const FEAT_GC_CONSERVATIVE = "gc:conservative" as const;
+export const FEAT_VM = "vm" as const;
+export const FEAT_GC_PRECISE = "gc-precise" as const;
+export const FEAT_GC_CONSERVATIVE = "gc-conservative" as const;
 
 export const FEAT_IO = "io" as const;
 export const FEAT_LOAD = "load" as const;

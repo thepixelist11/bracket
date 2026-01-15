@@ -56,7 +56,7 @@ export const VALUE_TYPE_JS_TYPE_MAP: Record<ValueType, string> = {
     [TokenType.MULTI]: "object",
 } as const;
 
-export type MacroExpander = (args: ASTNode[], env: BracketEnvironment) => ASTNode;
+export type MacroExpander = (args: ASTNode[], env: BracketEnvironment, ctx: InterpreterContext) => ASTNode;
 
 export type BuiltinFunction =
     ({ constant: true } & { value: Token, doc?: string }) |
@@ -103,7 +103,7 @@ export class Evaluator {
 
     evaluate(ast: ASTNode, env?: BracketEnvironment): Token {
         const real_env = env ?? new BracketEnvironment(TEMP_ENVIRONMENT_LABEL, this.ctx);
-        const expanded = Evaluator.expand(ast, real_env);
+        const expanded = Evaluator.expand(ast, real_env, this.ctx);
         return Evaluator.evalExpanded(expanded, real_env, this.ctx);
     }
 
@@ -220,12 +220,12 @@ export class Evaluator {
         return proc(...args);
     }
 
-    static expand(ast: ASTNode, env: BracketEnvironment): ASTNode {
+    static expand(ast: ASTNode, env: BracketEnvironment, ctx: InterpreterContext): ASTNode {
         if (ast instanceof ASTLiteralNode) return ast;
         if (ast instanceof ASTProcedureNode) { throw new Error("procedure node appeared during macro expansion"); }
         if (ast.elements.length === 0) return ast;
 
-        const expanded_op = Evaluator.expand(ast.first, env);
+        const expanded_op = Evaluator.expand(ast.first, env, ctx);
 
         if (!ast.first) {
             if (expanded_op instanceof ASTLiteralNode && expanded_op.tok.literal === "lambda")
@@ -242,14 +242,14 @@ export class Evaluator {
             const builtin = env.builtins.get(expanded_op.tok.literal)!;
 
             if (!builtin.constant && !builtin.special && builtin.macro === true) {
-                const result = builtin.expander(ast.rest, env);
+                const result = builtin.expander(ast.rest, env, ctx);
                 if (!result.meta) result.meta = { row: -1, col: -1 };
                 result.meta["__macro"] = expanded_op.tok.literal;
-                return Evaluator.expand(result, env);
+                return Evaluator.expand(result, env, ctx);
             }
         }
 
-        const expanded_args = ast.rest.map(arg => Evaluator.expand(arg, env));
+        const expanded_args = ast.rest.map(arg => Evaluator.expand(arg, env, ctx));
 
         const final_result = new ASTSExprNode(expanded_op, ...expanded_args);
         return final_result;
@@ -367,7 +367,7 @@ export class Evaluator {
             if (args.length !== fn.params.length)
                 throw new Error(`arity mismatch: expected ${fn.params.length} arguments, got ${args.length} arguments`);
 
-            const closure = new BracketEnvironment("", ctx, fn.closure); // TODO: Label
+            const closure = new BracketEnvironment("", ctx, fn.closure);
 
             for (let i = 0; i < args.length; i++)
                 closure.define(fn.params[i], new ASTLiteralNode(args[i]));

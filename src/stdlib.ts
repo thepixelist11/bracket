@@ -5,6 +5,7 @@ import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTId
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
 import { toDisplay } from "./utils.js";
+import { argv0 } from "process";
 
 function resolveName(names: string[]) {
     return [LANG_NAME.toLowerCase(), ...names].join(".");
@@ -512,6 +513,44 @@ const STDLIB: BuiltinSet = {
         }],
         ["match", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
         ["case", { min_args: 0, ret_type: TokenType.ERROR, arg_type: [], fn: () => TokenError("todo") }],
+        ["cond-expand", {
+            macro: true,
+            variadic: true,
+            min_args: 0,
+            expander: (args: ASTNode[], _, ctx: InterpreterContext): ASTNode => {
+                for (const clause of args) {
+                    if (!(clause instanceof ASTSExprNode))
+                        throw new Error("cond-expand: invalid clause");
+
+                    const test = clause.first;
+                    const body = clause.rest;
+
+                    if (
+                        test instanceof ASTLiteralNode &&
+                        test.tok.type === TokenType.IDENT &&
+                        test.tok.literal === "else"
+                    ) {
+                        return body.length === 0
+                            ? ASTVoid()
+                            : body.length === 1
+                                ? body[0]
+                                : new ASTSExprNode(ASTIdent("begin"), ...body);
+                    }
+
+                    if (evalInterpreterFeatureExpr(test, ctx)) {
+                        return body.length === 0
+                            ? ASTVoid()
+                            : body.length === 1
+                                ? body[0]
+                                : new ASTSExprNode(ASTIdent("begin"), ...body);
+                    }
+                }
+
+                return ASTVoid();
+            },
+            doc: "Conditionally expands code based on feature availability. Supports and, or, and not operators.",
+            arg_names: ["clauses"]
+        }],
     ])
 } as const;
 
@@ -1450,4 +1489,34 @@ function evalLambda(args: ASTNode[], env: BracketEnvironment): Token {
     );
 
     return TokenProc(proc, params_node.meta);
+}
+
+function evalInterpreterFeatureExpr(expr: ASTNode, ctx: InterpreterContext): boolean {
+    if (expr instanceof ASTLiteralNode && expr.tok.type === TokenType.IDENT) {
+        return ctx.features.has(expr.tok.literal);
+    }
+
+    if (expr instanceof ASTSExprNode) {
+        const op = expr.first;
+
+        if (!(op instanceof ASTLiteralNode) || op.tok.type !== TokenType.IDENT)
+            throw new Error("cond-expand: invalid feature expression");
+
+        const args = expr.rest;
+
+        switch (op.tok.literal) {
+            case "and":
+                return args.every((node: ASTNode) => evalInterpreterFeatureExpr(node, ctx));
+            case "or":
+                return args.some((node: ASTNode) => evalInterpreterFeatureExpr(node, ctx));
+            case "not":
+                if (args.length !== 1)
+                    throw new Error(`cond-expand: arity mismatch; not expectes one argument, got ${args.length}`);
+                return !evalInterpreterFeatureExpr(args[0], ctx);
+            default:
+                throw new Error(`cond-expand: unknown feature operator ${op.tok.literal}`);
+        }
+    }
+
+    throw new Error("cond-expand: invalid feature expression");
 }
