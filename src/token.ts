@@ -1,6 +1,8 @@
 import { ParenType, EOF_CHAR, LPAREN_TYPE_MAP, RPAREN_TYPE_MAP } from "./lexer.js";
 import { Lexer } from "./lexer.js";
 import { ASTProcedureNode } from "./ast.js";
+import { ProcedureValue } from "./evaluator.js";
+import { BracketEnvironment } from "./env.js";
 
 let __next_sym_id = 0;
 export const INTERN_TABLE = new Map<string, RuntimeSymbol>();
@@ -178,7 +180,7 @@ export function TokenIdent(ident: string | Token<TokenType.SYM>, meta?: TokenMet
 };
 
 export function TokenChar(char: string, meta?: TokenMetadata) { return new Token(TokenType.CHAR, char, defaultMeta(meta), {}) };
-export function TokenProc(proc: ASTProcedureNode, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), proc) };
+export function TokenProc(proc: ASTProcedureNode, env: BracketEnvironment, meta?: TokenMetadata) { return new Token(TokenType.PROCEDURE, "", defaultMeta(meta), new ProcedureValue(proc, env)) };
 export function TokenList(list: Token[], meta?: TokenMetadata) { return new Token(TokenType.LIST, "", defaultMeta(meta), list) };
 export function TokenForm(val: Token[], meta?: TokenMetadata) { return new Token(TokenType.FORM, "", defaultMeta(meta), val) };
 export function TokenMeta(injector: TokenMetadataInjector, meta?: TokenMetadata) { return new Token(TokenType.META, "", defaultMeta(meta), injector) };

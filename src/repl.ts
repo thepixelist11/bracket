@@ -3,14 +3,15 @@ import { Parser } from "./parser.js";
 import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType, INTERN_TABLE } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
-import { ASTToSourceCode } from "./decompiler.js";
+import { ASTToSourceCode, ANFProgramToString } from "./decompiler.js";
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE, FEAT_IO, FEAT_REPL, FEAT_SYS_EXEC } from "./globals.js";
-import { printDeep, Output, exit, editDistance, wrapLines } from "./utils.js";
+import { printDeep, Output, exit, editDistance, wrapLines, prune } from "./utils.js";
 import { runFile } from "./run_file.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { ANFCompiler, ANFProgram } from "./anf.js";
 
 type REPLCommandFnContext = { stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable, repl: REPL };
 type REPLCommand =
@@ -572,48 +573,6 @@ const REPL_COMMANDS = new REPLCommandTable([
         fn: (_, ctx) => {
             const { env } = ctx;
 
-            function prune(value: unknown, prune_terms = new Set(["builtins", "__builtins", "__stdout"]), seen = new WeakMap()): unknown {
-                if (value && typeof value === "object") {
-                    if (seen.has(value)) {
-                        return seen.get(value);
-                    }
-
-                    let result: any;
-
-                    if (Array.isArray(value)) {
-                        result = [];
-                        seen.set(value, result);
-                        for (const item of value) {
-                            result.push(prune(item, prune_terms, seen));
-                        }
-                    } else if (value instanceof Map) {
-                        result = new Map();
-                        seen.set(value, result);
-                        for (const [k, v] of value.entries()) {
-                            if (prune_terms.has(k)) continue;
-                            result.set(k, prune(v, prune_terms, seen));
-                        }
-                    } else if (value instanceof Set) {
-                        result = new Set();
-                        seen.set(value, result);
-                        for (const v of value) {
-                            result.add(prune(v, prune_terms, seen));
-                        }
-                    } else {
-                        result = {};
-                        seen.set(value, result);
-                        for (const [key, val] of Object.entries(value)) {
-                            if (prune_terms.has(key)) continue;
-                            result[key] = prune(val, prune_terms, seen);
-                        }
-                    }
-
-                    return result;
-                }
-
-                return value;
-            }
-
             const pruned = prune(env);
             STDOUT.write("\n");
             printDeep(pruned);
@@ -634,6 +593,7 @@ const enum KeyPress {
     DOWN = "\u001b[B",
     RIGHT = "\u001b[C",
     LEFT = "\u001b[D",
+    CBS = "\u001c",
 };
 
 export class REPL {
@@ -682,6 +642,12 @@ export class REPL {
 
         process.stdin.on("data", data => {
             const key_str = String(data);
+
+            if (this.isCtrlBackslash(key_str)) {
+                this.insertChar("λ");
+                this.render();
+                return;
+            }
 
             if (this.isEnd(key_str)) {
                 if (this.buffer[this.cursor_line].length === 0) {
@@ -844,6 +810,10 @@ export class REPL {
         return key === KeyPress.EOT || key === KeyPress.ETX;
     }
 
+    isCtrlBackslash(key: string): boolean {
+        return key === KeyPress.CBS;
+    }
+
     loadREPLHistory(): string[][] {
         if (!REPL_HISTORY_FILE || !fs.existsSync(REPL_HISTORY_FILE)) return [];
 
@@ -913,11 +883,22 @@ export class REPL {
             if (!(ast instanceof ASTProgram))
                 throw new Error(`unexpected ASTNode; expected a Program`);
 
-            const value = this.e.evaluateProgram(ast, this.env, this.env.stdout, false);
+            const expanded_ast = ast.forms.map(f => Evaluator.expand(f, this.env, this.l.ctx));
+
+            const anf_forms = expanded_ast.map(f => ANFCompiler.makeANFExpr(f));
+            const anf_program = new ANFProgram(
+                anf_forms.length === 1 ? anf_forms[0] : ANFCompiler.chainANFExprs(anf_forms),
+                "test"
+            );
+
+            console.log("\n" + ANFProgramToString(anf_program));
+
+            // const value = this.e.evaluateProgram(ast, this.env, this.env.stdout, false);
 
             this.appendREPLHistory(expr.split("\n"));
 
-            ret = { result: value, code: PartialExitCode.SUCCESS, ast };
+            ret = { result: TokenVoid(), code: PartialExitCode.SUCCESS, ast };
+            // ret = { result: value, code: PartialExitCode.SUCCESS, ast };
         } catch (err) {
             ret = {
                 result: TokenError(`${this.env.label} ${((err as any).message ?? String(err))}`),
@@ -979,7 +960,7 @@ export class REPL {
             this.stdoutFlush();
 
             this.REPLRunWithVerbosity(2, () => {
-                printDeep(ast);
+                printDeep(prune(ast));
             });
 
             this.REPLRunWithVerbosity(1, () => {

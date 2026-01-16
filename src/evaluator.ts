@@ -1,5 +1,5 @@
 import { ASTNode, ASTProcedureNode, ASTSExprNode, ASTLiteralNode, ASTProgram } from "./ast.js";
-import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, RuntimeSymbol, TokenMulti } from "./token.js";
+import { Token, ValueType, TokenType, TokenVoid, TokenError, TokenList, TokenMetadata, RuntimeSymbol, TokenMulti, TokenProc } from "./token.js";
 import { TEMP_ENVIRONMENT_LABEL, STDOUT, BOOL_FALSE, BOOL_TRUE, InterpreterContext, getDefaultReaderFeatures, LANG_NAME, VERSION_NUMBER } from "./globals.js";
 import { TOKEN_PRINT_TYPE_MAP } from "./token.js";
 import { BracketEnvironment } from "./env.js";
@@ -86,6 +86,13 @@ export type BuiltinFunction =
                 doc?: string,
             };
 
+export class ProcedureValue {
+    constructor(
+        public lambda: ASTProcedureNode,
+        public env: BracketEnvironment
+    ) { }
+}
+
 export class Evaluator {
     ctx: InterpreterContext = {
         file_directives: new Map(),
@@ -132,6 +139,9 @@ export class Evaluator {
     static evalExpanded(ast: ASTNode, env: BracketEnvironment, ctx: InterpreterContext): Token {
         if (ast instanceof ASTLiteralNode) {
             if (ast.tok.type === TokenType.IDENT) {
+                if (ast.tok.literal === "lambda" || ast.tok.literal === "λ")
+                    throw new Error(`unexpected raw lambda identifier`);
+
                 if (env.has(ast.tok.value as RuntimeSymbol)) {
                     const result = env.get(ast.tok.value as RuntimeSymbol);
 
@@ -154,8 +164,16 @@ export class Evaluator {
             }
 
             return ast.tok;
+
         } else if (ast instanceof ASTSExprNode) {
             return Evaluator.evalListFunctionNode(ast, env, ctx);
+
+        } else if (ast instanceof ASTProcedureNode) {
+            return TokenProc(
+                ast,
+                env,
+                ast.meta
+            );
         }
 
         return TokenVoid();
@@ -222,7 +240,11 @@ export class Evaluator {
 
     static expand(ast: ASTNode, env: BracketEnvironment, ctx: InterpreterContext): ASTNode {
         if (ast instanceof ASTLiteralNode) return ast;
-        if (ast instanceof ASTProcedureNode) { throw new Error("procedure node appeared during macro expansion"); }
+        if (ast instanceof ASTProcedureNode) {
+            const expanded_body = ast.body.map(e => Evaluator.expand(e, env, ctx));
+            return new ASTProcedureNode(ast.params, expanded_body, ast.meta);
+        }
+
         if (ast.elements.length === 0) return ast;
 
         const expanded_op = Evaluator.expand(ast.first, env, ctx);
@@ -358,22 +380,22 @@ export class Evaluator {
             throw new Error(`application: not a procedure: expected a procedure that can be applied to arguments`);
         }
 
-        if (!(evaluated.value instanceof ASTProcedureNode))
+        if (!(evaluated.value instanceof ProcedureValue))
             throw new Error(`malformed Procedure token`);
 
         const fn = evaluated.value;
 
         return (...args: Token[]) => {
-            if (args.length !== fn.params.length)
-                throw new Error(`arity mismatch: expected ${fn.params.length} arguments, got ${args.length} arguments`);
+            if (args.length !== fn.lambda.params.length)
+                throw new Error(`arity mismatch: expected ${fn.lambda.params.length} arguments, got ${args.length} arguments`);
 
-            const closure = new BracketEnvironment("", ctx, fn.closure);
+            const closure = new BracketEnvironment("", ctx, fn.env);
 
             for (let i = 0; i < args.length; i++)
-                closure.define(fn.params[i], new ASTLiteralNode(args[i]));
+                closure.define(fn.lambda.params[i], new ASTLiteralNode(args[i]));
 
             let result = TokenVoid();
-            for (const expr of fn.body) {
+            for (const expr of fn.lambda.body) {
                 result = Evaluator.evalExpanded(expr, closure, ctx);
                 if (result.type === TokenType.ERROR) return result;
             }

@@ -1,8 +1,8 @@
 import { ASTSExprNode, ASTProcedureNode, ASTLiteralNode, ASTProgram, ASTNode } from "./ast.js";
-import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token } from "./token.js";
+import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token, RuntimeSymbol } from "./token.js";
 import { Lexer } from "./lexer.js";
 import { DECOMPILER_CLOSING_ON_NEW_LINE } from "./globals.js";
-import { printDeep } from "./utils.js";
+import { ANFApp, ANFIf, ANFLambda, ANFLet, ANFLiteral, ANFProgram, ANFVar, ANF } from "./anf.js";
 
 interface RenderCtx {
     indent: number;
@@ -307,4 +307,50 @@ export function ASTToSourceCode(ast: ASTNode | ASTProgram, ctx: RenderCtx = { in
         return "";
     }).join("\n");
 
+}
+
+function symToName(sym: RuntimeSymbol) {
+    return sym.interned ? sym.name : sym.name + sym.id;
+}
+
+export function ANFToString(node: ANF): string {
+    if (node instanceof ANFLiteral) return node.value.literal;
+
+    if (node instanceof ANFVar) return symToName(node.name);
+
+    if (node instanceof ANFLambda) {
+        const params = node.params.map(p => p.name).join(" ");
+        const body_str = ANFToString(node.body);
+
+        return `(λ (${params}) ${body_str})`;
+    }
+
+    if (node instanceof ANFApp) {
+        const callee = ANFToString(node.callee);
+        const args = node.args.map(a => ANFToString(a));
+
+        return `(${callee} ${args.join(" ")})`;
+    }
+
+    if (node instanceof ANFLet) {
+        const name_str = symToName(node.name);
+        const value_str = ANFToString(node.value);
+        const body_str = ANFToString(node.body);
+
+        return `\n  (let (${name_str} ${value_str}) ${body_str})`;
+    }
+
+    if (node instanceof ANFIf) {
+        const cond_str = ANFToString(node.cond);
+        const then_str = ANFToString(node.then_branch);
+        const else_str = ANFToString(node.else_branch);
+
+        return `(if ${cond_str} ${then_str} ${else_str})`;
+    }
+
+    throw new Error("Unknown ANF node type.");
+}
+
+export function ANFProgramToString(program: ANFProgram) {
+    return `(program ${program.name} ${ANFToString(program.body)})`;
 }

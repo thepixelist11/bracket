@@ -5,7 +5,6 @@ import { ASTNode, ASTLiteralNode, ASTSExprNode, ASTVoid, ASTProcedureNode, ASTId
 import { BracketEnvironment } from "./env.js";
 import { Evaluator } from "./evaluator.js";
 import { toDisplay } from "./utils.js";
-import { argv0 } from "process";
 
 function resolveName(names: string[]) {
     return [LANG_NAME.toLowerCase(), ...names].join(".");
@@ -301,9 +300,9 @@ const STDLIB: BuiltinSet = {
         }],
         ["else", { fn: () => { throw new Error("else: not allowed as an expression") }, ret_type: TokenType.ERROR, arg_type: [TokenType.ANY], min_args: 0, variadic: true, doc: "For use with cond." }],
         ["if", { special: true, special_fn: evalIf, doc: "Evaluates the test expression and evaluates the `if` branch if not false and the `then` branch otherwise.", arg_names: ["test", "if", "then"] }],
-        ["define", { special: true, special_fn: evalDefine, doc: "Binds a value to an identifier in the current environment.", arg_names: ["ident", "value"] }],
-        ["lambda", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
-        ["λ", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
+        // ["define", { special: true, special_fn: evalDefine, doc: "Binds a value to an identifier in the current environment.", arg_names: ["ident", "value"] }],
+        // ["lambda", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
+        // ["λ", { special: true, special_fn: evalLambda, doc: "Produces a procedure with the given parameters and body.", arg_names: ["parameter-list", "bodies"] }],
         ["eq?", {
             min_args: 2,
             raw: ["token", "token"],
@@ -1437,79 +1436,79 @@ function evalSet(args: ASTNode[], env: BracketEnvironment, _: TokenMetadata, ctx
 
     return TokenVoid();
 }
-
-function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadata, ctx: InterpreterContext): Token {
-    if (args.length === 0) throw new Error("define: bad syntax; no arguments provided");
-    if (args.length === 1) throw new Error("define: bad syntax; missing expression after identifier");
-
-    const ident = args[0];
-    const body_nodes = args.slice(1);
-
-    if (ident instanceof ASTLiteralNode) {
-        if (args.length > 2) throw new Error("define: bad syntax; multiple expressions after identifier");
-        const final_value = Evaluator.evalExpanded(body_nodes[0], env, ctx);
-
-        if (final_value.type === TokenType.ERROR)
-            throw new Error(final_value.literal);
-
-        if (ident.tok.type !== TokenType.IDENT)
-            throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[ident.tok.type]}`);
-
-        env.define(ident.tok.value as RuntimeSymbol, new ASTLiteralNode(final_value, meta));
-    } else if (ident instanceof ASTSExprNode) {
-        if (ident.elements.length === 0)
-            throw new Error(`define: bad syntax; no function name or arguments provided`);
-
-        if (ident.elements.some(e => e instanceof ASTSExprNode))
-            throw new Error(`define: not an identifier; expected a literal, instead found a list`);
-
-        if ((ident.elements as ASTLiteralNode[]).some(e => e.tok.type !== TokenType.IDENT))
-            throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[(ident.elements as ASTLiteralNode[]).find(e => e.tok.type !== TokenType.IDENT)!.tok.type]}`);
-
-        const name = (ident.first as ASTLiteralNode).tok.literal;
-        const sym = (ident.first as ASTLiteralNode).tok.value as RuntimeSymbol;
-        const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.value as RuntimeSymbol);
-
-        const procedure = new ASTProcedureNode(name, params, body_nodes, env);
-        const proc_token = TokenProc(procedure);
-        const proc_literal = new ASTLiteralNode(proc_token, meta);
-
-        procedure.closure.define(sym, proc_literal);
-
-        env.define(sym, proc_literal);
-    }
-
-    return ASTVoid().tok;
-}
-
-function evalLambda(args: ASTNode[], env: BracketEnvironment): Token {
-    if (args.length < 2)
-        throw new Error(`lambda: bad syntax; missing body`);
-
-    const params_node = args[0];
-    const body_nodes = args.slice(1);
-
-    // TODO: Allow for rest arguments
-    if (!(params_node instanceof ASTSExprNode))
-        throw new Error(`lambda: bad syntax; rest arguments are not yet supported`);
-
-    const params: RuntimeSymbol[] = [];
-
-    for (const p of params_node.elements) {
-        if (!(p instanceof ASTLiteralNode) || p.tok.type !== TokenType.IDENT)
-            throw new Error(`lambda: bad syntax; parameters must be identifiers`);
-        params.push(p.tok.value as RuntimeSymbol);
-    }
-
-    const proc = new ASTProcedureNode(
-        "lambda",
-        params,
-        body_nodes,
-        env,
-    );
-
-    return TokenProc(proc, params_node.meta);
-}
+//
+// function evalDefine(args: ASTNode[], env: BracketEnvironment, meta: TokenMetadata, ctx: InterpreterContext): Token {
+//     if (args.length === 0) throw new Error("define: bad syntax; no arguments provided");
+//     if (args.length === 1) throw new Error("define: bad syntax; missing expression after identifier");
+//
+//     const ident = args[0];
+//     const body_nodes = args.slice(1);
+//
+//     if (ident instanceof ASTLiteralNode) {
+//         if (args.length > 2) throw new Error("define: bad syntax; multiple expressions after identifier");
+//         const final_value = Evaluator.evalExpanded(body_nodes[0], env, ctx);
+//
+//         if (final_value.type === TokenType.ERROR)
+//             throw new Error(final_value.literal);
+//
+//         if (ident.tok.type !== TokenType.IDENT)
+//             throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[ident.tok.type]}`);
+//
+//         env.define(ident.tok.value as RuntimeSymbol, new ASTLiteralNode(final_value, meta));
+//     } else if (ident instanceof ASTSExprNode) {
+//         if (ident.elements.length === 0)
+//             throw new Error(`define: bad syntax; no function name or arguments provided`);
+//
+//         if (ident.elements.some(e => e instanceof ASTSExprNode))
+//             throw new Error(`define: not an identifier; expected a literal, instead found a list`);
+//
+//         if ((ident.elements as ASTLiteralNode[]).some(e => e.tok.type !== TokenType.IDENT))
+//             throw new Error(`define: expected an Ident, found ${TOKEN_PRINT_TYPE_MAP[(ident.elements as ASTLiteralNode[]).find(e => e.tok.type !== TokenType.IDENT)!.tok.type]}`);
+//
+//         const name = (ident.first as ASTLiteralNode).tok.literal;
+//         const sym = (ident.first as ASTLiteralNode).tok.value as RuntimeSymbol;
+//         const params = (ident.rest as ASTLiteralNode[]).map(a => a.tok.value as RuntimeSymbol);
+//
+//         const procedure = new ASTProcedureNode(name, params, body_nodes, env);
+//         const proc_token = TokenProc(procedure);
+//         const proc_literal = new ASTLiteralNode(proc_token, meta);
+//
+//         procedure.closure.define(sym, proc_literal);
+//
+//         env.define(sym, proc_literal);
+//     }
+//
+//     return ASTVoid().tok;
+// }
+//
+// function evalLambda(args: ASTNode[], env: BracketEnvironment): Token {
+//     if (args.length < 2)
+//         throw new Error(`lambda: bad syntax; missing body`);
+//
+//     const params_node = args[0];
+//     const body_nodes = args.slice(1);
+//
+//     // TODO: Allow for rest arguments
+//     if (!(params_node instanceof ASTSExprNode))
+//         throw new Error(`lambda: bad syntax; rest arguments are not yet supported`);
+//
+//     const params: RuntimeSymbol[] = [];
+//
+//     for (const p of params_node.elements) {
+//         if (!(p instanceof ASTLiteralNode) || p.tok.type !== TokenType.IDENT)
+//             throw new Error(`lambda: bad syntax; parameters must be identifiers`);
+//         params.push(p.tok.value as RuntimeSymbol);
+//     }
+//
+//     const proc = new ASTProcedureNode(
+//         "lambda",
+//         params,
+//         body_nodes,
+//         env,
+//     );
+//
+//     return TokenProc(proc, params_node.meta);
+// }
 
 function evalInterpreterFeatureExpr(expr: ASTNode, ctx: InterpreterContext): boolean {
     if (expr instanceof ASTLiteralNode && expr.tok.type === TokenType.IDENT) {

@@ -198,7 +198,7 @@ The following options are currently supported:
 - `--help`, `-h`
   Displays help information.
 
-- Positional arguments  
+- Positional arguments
   One or more files to evaluate.
 
 ## Examples

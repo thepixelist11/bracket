@@ -1,5 +1,4 @@
 import { TokenMetadata, Token, TokenError, TokenBool, TokenChar, TokenIdent, TokenNum, TokenStr, TokenSym, TokenVoid, TokenList, TokenType, BOOL_TRUE, TokenMetadataInjector, BOOL_FALSE, internSymbol, RuntimeSymbol } from "./token.js";
-import { BracketEnvironment } from "./env.js";
 
 interface ASTBase {
     meta?: TokenMetadata;
@@ -36,17 +35,11 @@ export class ASTSExprNode implements ASTBase {
 }
 
 export class ASTProcedureNode implements ASTBase {
-    public params: RuntimeSymbol[];
-    public body: ASTNode[];
-    public closure: BracketEnvironment;
-    public meta?: TokenMetadata;
-
-    constructor(name: string, params: RuntimeSymbol[], body: ASTNode[], env: BracketEnvironment) {
-        this.params = params;
-        this.body = body;
-        this.closure = new BracketEnvironment(name, env.ctx, env);
-        this.closure.define(internSymbol(name), ASTVoid(this.meta));
-    }
+    constructor(
+        public params: RuntimeSymbol[],
+        public body: ASTNode[],
+        public meta?: TokenMetadata
+    ) { }
 }
 
 export class ASTProgram {
