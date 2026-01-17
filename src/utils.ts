@@ -175,3 +175,9 @@ export function prune(value: unknown, prune_terms = new Set(["builtins", "__buil
     return value;
 }
 
+export function toByteString(value: number | number[], bytes = 1) {
+    if (typeof value === "number")
+        return value.toString(2).padStart(8 * bytes, "0");
+
+    return value.map(b => b.toString(2).padStart(8 * bytes, "0")).join(" ");
+}

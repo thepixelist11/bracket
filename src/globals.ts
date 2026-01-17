@@ -22,6 +22,19 @@ export const REPL_HIST_APPEND_ERRORS = true as const;
 export const REPL_COMMAND_MAX_LINE_LENGTH = 78 as const;
 export const REPL_COMMAND_CORRECTION_MAX_DISTANCE = 3 as const;
 
+export const BYTECODE_BUFFER_SIZE_FACTOR = 1.5 as const;
+const BYTECODE_PROGRAM_MAX_SIZE_32 = 1_610_612_736 as const;
+const BYTECODE_PROGRAM_MAX_SIZE_64 = 4_294_967_296 as const;
+export const BYTECODE_PROGRAM_MAX_SIZE =
+    (
+        process.arch === "ppc64" ||
+        process.arch === "loong64" ||
+        process.arch === "arm64" ||
+        process.arch === "x64"
+    )
+        ? BYTECODE_PROGRAM_MAX_SIZE_64
+        : BYTECODE_PROGRAM_MAX_SIZE_32;
+
 export const DECOMPILER_CLOSING_ON_NEW_LINE = false as const;
 
 export const FD_SHEBANG = "exec_with" as const;

@@ -1,8 +1,10 @@
 import { ASTSExprNode, ASTProcedureNode, ASTLiteralNode, ASTProgram, ASTNode } from "./ast.js";
 import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token, RuntimeSymbol } from "./token.js";
 import { Lexer } from "./lexer.js";
+import { toByteString } from "./utils.js";
 import { DECOMPILER_CLOSING_ON_NEW_LINE } from "./globals.js";
 import { ANFApp, ANFIf, ANFLambda, ANFLet, ANFLiteral, ANFProgram, ANFVar, ANF } from "./anf.js";
+import { BCDataTag, BCInstrArityMap, BCInstrCode, BCInstrPrintMap } from "./compiler.js";
 
 interface RenderCtx {
     indent: number;
@@ -353,4 +355,122 @@ export function ANFToString(node: ANF): string {
 
 export function ANFProgramToString(program: ANFProgram) {
     return `(program ${program.name} ${ANFToString(program.body)})`;
+}
+
+function BCDataToString(data: number[]) {
+    const [tag, ...raw] = data;
+
+    switch (tag >> 3) {
+        case BCDataTag.INT: {
+            const buffer = new DataView(new Uint8Array(raw).buffer);
+            return buffer.getInt32(0, true).toString();
+        }
+
+        case BCDataTag.FLOAT: {
+            const buffer = new DataView(new Uint8Array(raw).buffer);
+            return buffer.getFloat64(0, true).toString();
+        }
+
+        case BCDataTag.NIL:
+            return "nil";
+
+        case BCDataTag.IDENT:
+        case BCDataTag.SYM: { // TODO: Intern table lookups
+            const buffer = new DataView(new Uint8Array(raw).buffer);
+            return buffer.getInt32(0, true).toString();
+        }
+
+        case BCDataTag.STR: {
+            const length = raw[0];
+            const encoded = new Uint8Array(raw.slice(1, 1 + length));
+            return new TextDecoder().decode(encoded);
+        }
+
+        case BCDataTag.BOOL: {
+            return (tag & 1) === 1 ? "#t" : "#f";
+        }
+
+        case BCDataTag.LIST:
+        case BCDataTag.PAIR:
+        case BCDataTag.PROC:
+            throw new Error("not yet implemented");
+    }
+
+    return toByteString(data);
+}
+
+export function BCToString(bytecode: Uint8Array) {
+    let offset = 0;
+    let out = "";
+
+    const offset_print_len = bytecode.length.toString().length;
+
+    const read = (bytes: number): number[] => {
+        if (bytes + offset > bytecode.length)
+            throw new Error(`attempted to read out of bytecode buffer bounds`);
+
+        const arr = Array.from(bytecode.slice(offset, offset + bytes));
+        offset += bytes;
+
+        return arr;
+    }
+
+    const readDatum = (count: number): number[][] => {
+        if (count === 0) return [];
+
+        let results: number[][] = [];
+
+        for (let i = 0; i < count; i++) {
+            const tag = read(1)[0];
+
+            results.push([tag]);
+
+            switch (tag >> 3) {
+                case BCDataTag.IDENT:
+                case BCDataTag.SYM:
+                case BCDataTag.INT:
+                    results[results.length - 1].push(...read(4));
+                    break;
+
+                case BCDataTag.FLOAT:
+                    results[results.length - 1].push(...read(8));
+                    break;
+
+                case BCDataTag.STR:
+                    const len = read(1)[0];
+                    results[results.length - 1].push(len, ...read(len));
+
+                case BCDataTag.BOOL:
+                case BCDataTag.NIL:
+                    break;
+
+                case BCDataTag.LIST:
+                case BCDataTag.PAIR:
+                case BCDataTag.PROC:
+                    throw new Error("not yet implemented");
+            }
+        }
+
+        return results;
+    }
+
+    while (offset < bytecode.length) {
+        const instr_offset = offset;
+        const op_code = read(1)[0];
+        const op_name = BCInstrPrintMap.get(op_code);
+        const arity = BCInstrArityMap.get(op_code);
+
+        if (!op_name || arity === undefined)
+            throw new Error(`undefined instruction: ${toByteString(op_code)} (${op_code}) at ${instr_offset}`);
+
+
+        const args = readDatum(arity).map(BCDataToString);
+
+        out += `${instr_offset.toString().padStart(offset_print_len)}`;
+        out += ` ${op_name}`;
+        out += ` ${args.join(" ")}`;
+        out += "\n";
+    }
+
+    return out;
 }

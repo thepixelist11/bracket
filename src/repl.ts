@@ -3,7 +3,7 @@ import { Parser } from "./parser.js";
 import { Evaluator } from "./evaluator.js";
 import { Token, TokenError, TokenVoid, TokenType, INTERN_TABLE } from "./token.js";
 import { ASTLiteralNode, ASTNode, ASTProgram, ASTSExprNode } from "./ast.js";
-import { ASTToSourceCode, ANFProgramToString } from "./decompiler.js";
+import { ASTToSourceCode, BCToString } from "./decompiler.js";
 import { BracketEnvironment } from "./env.js";
 import { PartialExitCode, REPL_ENVIRONMENT_LABEL, REPL_AUTOCOMPLETE, REPL_BANNER_ENABLED, REPL_HIST_APPEND_ERRORS, REPL_HISTORY_FILE, REPL_INPUT_HISTORY_SIZE, REPL_LOAD_COMMANDS_FROM_HIST, REPL_PROMPT, REPL_VERBOSITY, WELCOME_MESSAGE, STDOUT, REPL_SAVE_COMMANDS_TO_HIST, HELP_TOPICS, DEFAULT_HELP_LABEL, REPL_COMMAND_MAX_LINE_LENGTH, REPL_COMMAND_CORRECTION_MAX_DISTANCE, FEAT_IO, FEAT_REPL, FEAT_SYS_EXEC } from "./globals.js";
 import { printDeep, Output, exit, editDistance, wrapLines, prune } from "./utils.js";
@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { ANFCompiler, ANFProgram } from "./anf.js";
+import { BCCompiler } from "./compiler.js";
 
 type REPLCommandFnContext = { stdout: Output, env: BracketEnvironment, evaluator: Evaluator, parser: Parser, lexer: Lexer, table: REPLCommandTable, repl: REPL };
 type REPLCommand =
@@ -829,6 +830,7 @@ export class REPL {
     }
 
     appendREPLHistory(current_buffer: string[]): void {
+        // FIXME: Check array equality for buffers
         if (this.hist.at(0) === current_buffer) return;
         const escaped = current_buffer.map(line => line.replaceAll("::", "::::"));
 
@@ -891,7 +893,9 @@ export class REPL {
                 "test"
             );
 
-            console.log("\n" + ANFProgramToString(anf_program));
+            const compiler = new BCCompiler();
+            const bytecode = compiler.compile(anf_program);
+            console.log("\n" + BCToString(bytecode));
 
             // const value = this.e.evaluateProgram(ast, this.env, this.env.stdout, false);
 
