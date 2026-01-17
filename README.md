@@ -2,6 +2,9 @@
 
 Bracket is an experimental, Scheme-like interpreter written in TypeScript.
 
+## Notice
+Bracket is currently undergoing a major redesign. The version on the `main` branch is outdated. Compiler/VM work is being done on the [compiler](https://github.com/thepixelist11/bracket/tree/compiler) branch.
+
 ## Overview
 
 Bracket is a tree-walking interpreter designed from first principles.  
