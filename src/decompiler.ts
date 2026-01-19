@@ -1,10 +1,10 @@
 import { ASTSExprNode, ASTProcedureNode, ASTLiteralNode, ASTProgram, ASTNode } from "./ast.js";
 import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token, RuntimeSymbol } from "./token.js";
 import { Lexer } from "./lexer.js";
-import { toByteString } from "./utils.js";
-import { DECOMPILER_CLOSING_ON_NEW_LINE } from "./globals.js";
+import { readFloat64, readInt32, readString, readUint16, readUint32, readUint8, toByteString } from "./utils.js";
+import { BYTECODE_FLAG_ATTRIBUTE, BYTECODE_FLAG_DEBUG, BYTECODE_FLAG_LINE_INFO, BYTECODE_FLAG_OPTIMIZED, BYTECODE_FLAG_SOURCE_MAP, BYTECODE_FLAG_TYPE_INFO, BYTECODE_HEADER_SIZE, BYTECODE_MAGIC_BYTES, BYTECODE_SECTION_TAG_BYTECODE, BYTECODE_SECTION_TAG_CONSTANT_POOL, BYTECODE_SECTION_TAG_PROCEDURE_TABLE, BYTECODE_SECTION_TAG_SYMBOL_TABLE, DECOMPILER_CLOSING_ON_NEW_LINE, VERSION_ID, VERSION_ID_TO_NUMBER } from "./globals.js";
 import { ANFApp, ANFIf, ANFLambda, ANFLet, ANFLiteral, ANFProgram, ANFVar, ANF } from "./anf.js";
-import { BCDataTag, BCInstrArityMap, BCInstrCode, BCInstrPrintMap } from "./compiler.js";
+import { BCBoolean, BCData, BCDataTag, BCFloat, BCIdent, BCInstrArityMap, BCInstrCode, BCInstrPrintMap, BCInteger, BCInternTable, BCNil, BCSection, BCString, BCSymbol, ConstantPool } from "./compiler.js";
 
 interface RenderCtx {
     indent: number;
@@ -357,7 +357,7 @@ export function ANFProgramToString(program: ANFProgram) {
     return `(program ${program.name} ${ANFToString(program.body)})`;
 }
 
-function BCDataToString(data: number[]) {
+function BCDataNumArrToString(data: number[]) {
     const [tag, ...raw] = data;
 
     switch (tag >> 3) {
@@ -399,7 +399,28 @@ function BCDataToString(data: number[]) {
     return toByteString(data);
 }
 
-export function BCToString(bytecode: Uint8Array) {
+function BCDataToString(data: BCData, symbol_table: BCInternTable): string {
+    switch (data.tag) {
+        case BCDataTag.INT:
+        case BCDataTag.FLOAT:
+            return data.value.toString();
+
+        case BCDataTag.IDENT:
+        case BCDataTag.SYM:
+            return symbol_table.get(data.value) ?? "undef";
+
+        case BCDataTag.STR:
+            return data.value;
+
+        case BCDataTag.BOOL:
+            return data.value ? "#t" : "#f";
+
+        case BCDataTag.NIL:
+            return "nil";
+    }
+}
+
+export function BCToString(bytecode: Uint8Array, sym_table: BCInternTable, const_pool: ConstantPool) {
     let offset = 0;
     let out = "";
 
@@ -463,14 +484,220 @@ export function BCToString(bytecode: Uint8Array) {
         if (!op_name || arity === undefined)
             throw new Error(`undefined instruction: ${toByteString(op_code)} (${op_code}) at ${instr_offset}`);
 
+        if (op_code === BCInstrCode.LABEL)
+            throw new Error(`illegal LABEL instruction found in bytecode`);
 
-        const args = readDatum(arity).map(BCDataToString);
+        const args = readDatum(arity).map(BCDataNumArrToString);
+
+        if (op_code === BCInstrCode.LOAD_CONST) {
+            args[0] = `${args[0]} (${BCDataToString(const_pool[parseInt(args[0])], sym_table)})`;
+        }
+
+        if (
+            op_code === BCInstrCode.JMP ||
+            op_code === BCInstrCode.JMP_FALSE ||
+            op_code === BCInstrCode.JMP_TRUE
+        ) {
+            const target_offset = parseInt(args[0]);
+            const final_offset = instr_offset + target_offset;
+            args[0] = `${args[0]} => ${final_offset}`;
+        }
+
+        if (
+            op_code === BCInstrCode.LOAD_VAR ||
+            op_code === BCInstrCode.STORE_VAR
+        ) {
+            args[0] = `${args[0]} (${sym_table.get(parseInt(args[0]))})`;
+        }
 
         out += `${instr_offset.toString().padStart(offset_print_len)}`;
         out += ` ${op_name}`;
         out += ` ${args.join(" ")}`;
         out += "\n";
     }
+
+    return out;
+}
+
+function readSymbolTable(buf: Uint8Array, offset: number) {
+    const symbol_table = new Map<number, string>();
+    const symbol_count = readUint32(buf, offset);
+    offset += 4;
+
+    for (let symbols_read = 0; symbols_read < symbol_count; symbols_read++) {
+        const id = readUint32(buf, offset);
+        offset += 4;
+
+        const length = readUint16(buf, offset);
+        offset += 2;
+
+        const encoded = new Uint8Array(buf.slice(offset, offset + length));
+        offset += length;
+
+        const result = new TextDecoder().decode(encoded);
+        symbol_table.set(id, result);
+    }
+
+    return new BCInternTable(symbol_table);
+}
+
+function readConstantPool(buf: Uint8Array, sym_table: BCInternTable, offset: number) {
+    const constant_pool: { [key: number]: BCData } = {};
+    const constant_count = readUint32(buf, offset);
+    offset += 4;
+
+    for (let constants_read = 0; constants_read < constant_count; constants_read++) {
+        const tag_raw = buf[offset++];
+
+        if (tag_raw >> 3 === BCDataTag.BOOL) {
+            constant_pool[constants_read] = new BCBoolean((tag_raw & 1) === 1);
+            offset += 2; // read 2 byte length;
+            continue;
+        }
+
+        if (tag_raw >> 3 === BCDataTag.NIL) {
+            constant_pool[constants_read] = new BCNil();
+            offset += 2; // read 2 byte length;
+            continue;
+        }
+
+        const length = readUint16(buf, offset);
+        offset += 2;
+
+        const data = new Uint8Array(length);
+        for (let i = 0; i < length; i++)
+            data[i] = buf[offset++];
+
+        let bcdata: BCData = new BCNil();
+        switch (tag_raw >> 3 as BCDataTag) {
+            case BCDataTag.INT:
+                bcdata = new BCInteger(readInt32(data));
+                break;
+
+            case BCDataTag.FLOAT:
+                bcdata = new BCFloat(readFloat64(data));
+                break;
+
+            case BCDataTag.SYM: {
+                const id = readInt32(data);
+                const name = sym_table.get(id);
+                if (!name)
+                    throw new Error(`symbol ${id} missing in intern table`);
+                bcdata = new BCSymbol(name, sym_table);
+                break;
+            }
+
+            case BCDataTag.IDENT: {
+                const sym = sym_table.get(readInt32(data));
+                if (sym === undefined)
+                    throw new Error(`symbol ${sym} is not defined in the symbol table`);
+                bcdata = new BCIdent(sym, sym_table);
+                break;
+            }
+
+            case BCDataTag.STR: {
+                bcdata = new BCString(readString(data));
+                break;
+            }
+
+            case BCDataTag.LIST:
+            case BCDataTag.PAIR:
+            case BCDataTag.PROC:
+                throw new Error("not yet implemented");
+        }
+
+        constant_pool[constants_read] = bcdata;
+    }
+
+    return constant_pool;
+}
+
+function symbolTableToString(table: BCInternTable) {
+    let out = "";
+    let max_sym_length = 3;
+    for (const sym of table.values())
+        max_sym_length = Math.max(max_sym_length, sym.length);
+
+    for (const [id, sym] of table) {
+        out += `${id.toString().padEnd(max_sym_length - sym.length + 1)}${sym}\n`;
+    }
+
+    return out;
+}
+
+function constPoolToString(pool: ConstantPool, sym_table: BCInternTable) {
+    let out = "";
+    for (const idx in pool) {
+        const datum = pool[idx];
+        const datum_string = BCDataToString(datum, sym_table);
+        out += `${idx.padEnd(6)}${datum_string}\n`;
+    }
+    return out;
+}
+
+export function binaryFileToString(buf: Uint8Array) {
+    let out = "";
+
+    const magic_bytes = [
+        readUint8(buf, 0),
+        readUint8(buf, 1),
+        readUint8(buf, 2),
+        readUint8(buf, 3),
+    ].map(ch => String.fromCharCode(ch)).join("");
+
+    const expected_magic_bytes =
+        BYTECODE_MAGIC_BYTES.map(ch => String.fromCharCode(ch)).join("");
+
+    if (magic_bytes !== expected_magic_bytes)
+        throw new Error("invalid Bracket binary file");
+
+    const version = readUint16(buf, 4);
+    const word_size = readUint8(buf, 6);
+    const flags = readUint8(buf, 7);
+
+    let offset: number = BYTECODE_HEADER_SIZE;
+
+    const section_table: { [key: number]: BCSection } = {};
+    const section_count = readUint8(buf, offset++);
+    for (let i = 0; i < section_count; i++) {
+        const section_tag = readUint8(buf, offset++);
+        const section_offset = readUint32(buf, offset);
+        offset += 4;
+        const section_size = readUint32(buf, offset);
+        offset += 4;
+
+        section_table[section_tag] = ({ tag: section_tag, offset: section_offset, size: section_size });
+    }
+
+    if (!section_table[BYTECODE_SECTION_TAG_SYMBOL_TABLE])
+        throw new Error("malformed binary; symbol table section not found");
+    if (!section_table[BYTECODE_SECTION_TAG_CONSTANT_POOL])
+        throw new Error("malformed binary; constant pool section not found");
+    if (!section_table[BYTECODE_SECTION_TAG_PROCEDURE_TABLE])
+        throw new Error("malformed binary; procedure table section not found");
+    if (!section_table[BYTECODE_SECTION_TAG_BYTECODE])
+        throw new Error("malformed binary; bytecode section not found");
+
+    const sym_table = readSymbolTable(buf, section_table[BYTECODE_SECTION_TAG_SYMBOL_TABLE].offset);
+    const const_pool = readConstantPool(buf, sym_table, section_table[BYTECODE_SECTION_TAG_CONSTANT_POOL].offset);
+    const bytecode_section = section_table[BYTECODE_SECTION_TAG_BYTECODE];
+    const bytecode = buf.slice(bytecode_section.offset, bytecode_section.offset + bytecode_section.size);
+
+    out += "==== INFORMATION ==== \n";
+    out += `Bracket version  : ${VERSION_ID_TO_NUMBER(version)}\n`;
+    out += `Word size        : ${word_size}\n`;
+    out += `Debug            : ${flags & BYTECODE_FLAG_DEBUG}\n`;
+    out += `Optimized        : ${flags & BYTECODE_FLAG_OPTIMIZED}\n`;
+    out += `Source Map       : ${flags & BYTECODE_FLAG_SOURCE_MAP}\n`;
+    out += `Attribute        : ${flags & BYTECODE_FLAG_ATTRIBUTE}\n`;
+    out += `Line Info        : ${flags & BYTECODE_FLAG_LINE_INFO}\n`;
+    out += `Type Info        : ${flags & BYTECODE_FLAG_TYPE_INFO}\n\n`;
+    out += "==== INTERN TABLE ====\n";
+    out += symbolTableToString(sym_table) + "\n";
+    out += "===== CONST POOL =====\n";
+    out += constPoolToString(const_pool, sym_table) + "\n";
+    out += "====== BYTECODE ======\n";
+    out += BCToString(bytecode, sym_table, const_pool);
 
     return out;
 }

@@ -3,10 +3,6 @@
     "version": "0.0.1",
     "description": "",
     "main": "index.js",
-    "scripts": {
-        "build": "tsc",
-        "dev": "concurrently --names \"tsc,node\" -c \"auto\" --pad-prefix  \"tsc -w\" \"node --watch ./bin/bracket.js\""
-    },
     "keywords": [],
     "author": "",
     "license": "ISC",

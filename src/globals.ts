@@ -3,6 +3,7 @@ import os from "os";
 import { Output } from "./utils.js";
 
 export const VERSION_NUMBER = `0.0.1` as const;
+export const VERSION_ID = 1 as const;
 export const LANG_NAME = `Bracket` as const;
 export const WELCOME_MESSAGE = `Welcome to ${LANG_NAME} v${VERSION_NUMBER}.` as const;
 export const GOODBYE_MESSAGE = `Goodbye.` as const;
@@ -22,6 +23,11 @@ export const REPL_HIST_APPEND_ERRORS = true as const;
 export const REPL_COMMAND_MAX_LINE_LENGTH = 78 as const;
 export const REPL_COMMAND_CORRECTION_MAX_DISTANCE = 3 as const;
 
+export const VERSION_ID_TO_NUMBER = (id: number) => {
+    if (id === 1) return "0.0.1";
+    else return `unrecognized version ${id}`;
+};
+
 export const BYTECODE_BUFFER_SIZE_FACTOR = 1.5 as const;
 const BYTECODE_PROGRAM_MAX_SIZE_32 = 1_610_612_736 as const;
 const BYTECODE_PROGRAM_MAX_SIZE_64 = 4_294_967_296 as const;
@@ -34,6 +40,27 @@ export const BYTECODE_PROGRAM_MAX_SIZE =
     )
         ? BYTECODE_PROGRAM_MAX_SIZE_64
         : BYTECODE_PROGRAM_MAX_SIZE_32;
+export const BYTECODE_MAGIC_BYTES = [0x42, 0x52, 0x4B, 0x54] as const; // BRKT in LE
+export const BYTECODE_WORD_SIZE = 4 as const;
+export const BYTECODE_FLAG_OPTIMIZED = 0b00000001 as const;
+export const BYTECODE_FLAG_DEBUG = 0b00000010 as const;
+export const BYTECODE_FLAG_SOURCE_MAP = 0b00000100 as const;
+export const BYTECODE_FLAG_ATTRIBUTE = 0b00001000 as const;
+export const BYTECODE_FLAG_LINE_INFO = 0b00010000 as const;
+export const BYTECODE_FLAG_TYPE_INFO = 0b00100000 as const;
+export const BYTECODE_FLAGS = 0;
+export const BYTECODE_HEADER_SIZE = 24 as const;
+
+export const BYTECODE_SECTION_TAG_SYMBOL_TABLE = 0x01 as const;
+export const BYTECODE_SECTION_TAG_CONSTANT_POOL = 0x02 as const;
+export const BYTECODE_SECTION_TAG_PROCEDURE_TABLE = 0x03 as const;
+export const BYTECODE_SECTION_TAG_BYTECODE = 0x04 as const;
+export const BYTECODE_SECTION_TAG_DEBUG_INFO = 0x10 as const;
+export const BYTECODE_SECTION_TAG_SOURCE_MAP = 0x11 as const;
+export const BYTECODE_SECTION_TAG_LINE_INFO = 0x12 as const;
+export const BYTECODE_SECTION_TAG_TYPE_INFO = 0x13 as const;
+export const BYTECODE_SECTION_TAG_ATTRIBUTES = 0x14 as const;
+export const BYTECODE_SECTION_TAG_VENDOR = 0xFF as const;
 
 export const DECOMPILER_CLOSING_ON_NEW_LINE = false as const;
 
