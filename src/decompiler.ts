@@ -390,7 +390,6 @@ function BCDataNumArrToString(data: number[]) {
             return (tag & 1) === 1 ? "#t" : "#f";
         }
 
-        case BCDataTag.LIST:
         case BCDataTag.PAIR:
         case BCDataTag.PROC:
             throw new Error("not yet implemented");
@@ -465,7 +464,6 @@ export function BCToString(bytecode: Uint8Array, sym_table: BCInternTable, const
                 case BCDataTag.NIL:
                     break;
 
-                case BCDataTag.LIST:
                 case BCDataTag.PAIR:
                 case BCDataTag.PROC:
                     throw new Error("not yet implemented");
@@ -491,16 +489,6 @@ export function BCToString(bytecode: Uint8Array, sym_table: BCInternTable, const
 
         if (op_code === BCInstrCode.LOAD_CONST) {
             args[0] = `${args[0]} (${BCDataToString(const_pool[parseInt(args[0])], sym_table)})`;
-        }
-
-        if (
-            op_code === BCInstrCode.JMP ||
-            op_code === BCInstrCode.JMP_FALSE ||
-            op_code === BCInstrCode.JMP_TRUE
-        ) {
-            const target_offset = parseInt(args[0]);
-            const final_offset = instr_offset + target_offset;
-            args[0] = `${args[0]} => ${final_offset}`;
         }
 
         if (
@@ -600,7 +588,6 @@ function readConstantPool(buf: Uint8Array, sym_table: BCInternTable, offset: num
                 break;
             }
 
-            case BCDataTag.LIST:
             case BCDataTag.PAIR:
             case BCDataTag.PROC:
                 throw new Error("not yet implemented");

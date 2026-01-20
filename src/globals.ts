@@ -42,6 +42,8 @@ export const BYTECODE_PROGRAM_MAX_SIZE =
         : BYTECODE_PROGRAM_MAX_SIZE_32;
 export const BYTECODE_MAGIC_BYTES = [0x42, 0x52, 0x4B, 0x54] as const; // BRKT in LE
 export const BYTECODE_WORD_SIZE = 4 as const;
+export const BYTECODE_HEADER_SIZE = 24 as const;
+
 export const BYTECODE_FLAG_OPTIMIZED = 0b00000001 as const;
 export const BYTECODE_FLAG_DEBUG = 0b00000010 as const;
 export const BYTECODE_FLAG_SOURCE_MAP = 0b00000100 as const;
@@ -49,7 +51,6 @@ export const BYTECODE_FLAG_ATTRIBUTE = 0b00001000 as const;
 export const BYTECODE_FLAG_LINE_INFO = 0b00010000 as const;
 export const BYTECODE_FLAG_TYPE_INFO = 0b00100000 as const;
 export const BYTECODE_FLAGS = 0;
-export const BYTECODE_HEADER_SIZE = 24 as const;
 
 export const BYTECODE_SECTION_TAG_SYMBOL_TABLE = 0x01 as const;
 export const BYTECODE_SECTION_TAG_CONSTANT_POOL = 0x02 as const;

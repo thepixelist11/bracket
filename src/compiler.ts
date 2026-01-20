@@ -240,10 +240,9 @@ export const enum BCDataTag {
     STR = 0x04,
     BOOL = 0x05,
     NIL = 0x06,
-    LIST = 0x07,
-    PAIR = 0x08,
-    PROC = 0x09,
-    IDENT = 0x0a,
+    PAIR = 0x07,
+    PROC = 0x08,
+    IDENT = 0x09,
 };
 
 type EmitFn = (instr: BCInstr) => void;
@@ -273,7 +272,8 @@ export function createEmitter(): {
             if (!(arg instanceof BCString))
                 throw new Error("expected a string label");
 
-            label_positions.set(arg.value, byte_offset);
+            console.log(instructions.length);
+            label_positions.set(arg.value, instructions.length);
             return;
         }
 
@@ -315,8 +315,7 @@ export function createEmitter(): {
                 throw new Error(`unknown label: ${patch.name}`);
 
             const instr = instructions[patch.index];
-            const instr_offset = instr_offsets[patch.index];
-            const rel = target - instr_offset;
+            const rel = target - patch.index;
 
             instr.args[0] = new BCInteger(rel);
         }
@@ -401,7 +400,6 @@ class BCDataBase<Tag extends BCDataTag = BCDataTag, const T extends number = num
             case BCDataTag.NIL:
                 return [tag_byte | this.data[0]];
 
-            case BCDataTag.LIST:
             case BCDataTag.PAIR:
             case BCDataTag.PROC:
                 throw new Error("not yet implemented");
