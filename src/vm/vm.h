@@ -13,6 +13,19 @@
 
 #define BVM_MAGIC 0x544B5242 // BRKT
 
+#define BVM_PRIMITIVE_ENTRY UINT32_MAX
+
+typedef enum {
+    PRIM_ADD,
+    PRIM_SUB,
+    PRIM_MUL,
+    PRIM_DIV,
+    PRIM_CMP_EQ,
+    PRIM_CMP_LT,
+    PRIM_CMP_GT,
+    PRIM_NOT
+} BVMPrimitiveKind;
+
 typedef const enum {
     TAG_INT   = 0x01,
     TAG_FLOAT = 0x02,
@@ -54,18 +67,6 @@ typedef const enum {
     OP_STORE_CLOSURE = 0x0c,
     OP_POP           = 0x0d,
     OP_HALT          = 0x0e,
-    OP_ADD           = 0x0f,
-    OP_SUB           = 0x10,
-    OP_MUL           = 0x11,
-    OP_DIV           = 0x12,
-    OP_NEG           = 0x13,
-    OP_AND           = 0x14,
-    OP_OR            = 0x15,
-    OP_NOT           = 0x16,
-    OP_XOR           = 0x17,
-    OP_CMP_EQ        = 0x18,
-    OP_CMP_LT        = 0x19,
-    OP_CMP_GT        = 0x1a,
 } BVMInstrCode;
 
 typedef struct BVMValue {

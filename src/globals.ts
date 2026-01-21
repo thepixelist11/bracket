@@ -43,6 +43,7 @@ export const BYTECODE_PROGRAM_MAX_SIZE =
 export const BYTECODE_MAGIC_BYTES = [0x42, 0x52, 0x4B, 0x54] as const; // BRKT in LE
 export const BYTECODE_WORD_SIZE = 4 as const;
 export const BYTECODE_HEADER_SIZE = 24 as const;
+export const BYTECODE_PRIMITIVE_ENTRY = 0xFFFFFFFF as const;
 
 export const BYTECODE_FLAG_OPTIMIZED = 0b00000001 as const;
 export const BYTECODE_FLAG_DEBUG = 0b00000010 as const;

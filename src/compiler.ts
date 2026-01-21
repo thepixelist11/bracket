@@ -30,10 +30,11 @@
 //  Data --------------------- Size bytes
 //
 //           Procedure Table (0x03)          The procedure table defines all callable procedures in
-// Procedure Count Times:                      the file and describes execution environments. Free
-//  Entry PC ----------------- 4 bytes         variables are represented by symbol references for
-//  Arity -------------------- 2 bytes         closure construction and lexical scoping. This section
-//  Local Count -------------- 2 bytes         is required.
+// Procedure Count ----------- 4 bytes         the file and describes execution environments. Free   
+// Procedure Count Times:                      variables are represented by symbol references for    
+//  Entry PC ----------------- 4 bytes         closure construction and lexical scoping. This section
+//  Arity -------------------- 2 bytes         is required.
+//  Local Count -------------- 2 bytes
 //  Free Variable Count ------ 2 bytes
 //  Free Variables ----------- Free Var Count * 4 bytes
 //
@@ -125,9 +126,11 @@
 //
 //  Furthermore, BVM binaries are little endian and are byte-aligned.
 
-import { ANF, ANFProgram } from "./anf.js";
-import { BYTECODE_BUFFER_SIZE_FACTOR, BYTECODE_FLAGS, BYTECODE_HEADER_SIZE, BYTECODE_MAGIC_BYTES, BYTECODE_PROGRAM_MAX_SIZE, BYTECODE_SECTION_TAG_BYTECODE, BYTECODE_SECTION_TAG_CONSTANT_POOL, BYTECODE_SECTION_TAG_PROCEDURE_TABLE, BYTECODE_SECTION_TAG_SYMBOL_TABLE, BYTECODE_WORD_SIZE, VERSION_ID } from "./globals.js";
-import { printDeep, splitInt32, splitUint16, splitUint32, splitUint8, toByteString } from "./utils.js";
+import { ANFApp, ANFExpr, ANFIf, ANFLambda, ANFLet, ANFLiteral, ANFProgram, ANFVar } from "./anf.js";
+import { BYTECODE_BUFFER_SIZE_FACTOR, BYTECODE_FLAGS, BYTECODE_HEADER_SIZE, BYTECODE_MAGIC_BYTES, BYTECODE_PRIMITIVE_ENTRY, BYTECODE_PROGRAM_MAX_SIZE, BYTECODE_SECTION_TAG_BYTECODE, BYTECODE_SECTION_TAG_CONSTANT_POOL, BYTECODE_SECTION_TAG_PROCEDURE_TABLE, BYTECODE_SECTION_TAG_SYMBOL_TABLE, BYTECODE_WORD_SIZE, VERSION_ID } from "./globals.js";
+import { BRACKET_PRIMITIVES, lookupPrimitive } from "./primitives.js";
+import { Token, TOKEN_PRINT_TYPE_MAP, TokenType } from "./token.js";
+import { splitUint16, splitUint32, splitUint8 } from "./utils.js";
 
 export const enum BCInstrCode {
     RETURN = 0x00,
@@ -145,18 +148,6 @@ export const enum BCInstrCode {
     STORE_CLOSURE = 0x0c,
     POP = 0x0d,
     HALT = 0x0e,
-    ADD = 0x0f,
-    SUB = 0x10,
-    MUL = 0x11,
-    DIV = 0x12,
-    NEG = 0x13,
-    AND = 0x14,
-    OR = 0x15,
-    NOT = 0x16,
-    XOR = 0x17,
-    CMP_EQ = 0x18,
-    CMP_LT = 0x19,
-    CMP_GT = 0x1a,
 };
 
 export const BCInstrPrintMap = new Map<Byte, string>([
@@ -175,18 +166,6 @@ export const BCInstrPrintMap = new Map<Byte, string>([
     [BCInstrCode.STORE_CLOSURE, "STORE_CLOSURE"],
     [BCInstrCode.POP, "POP"],
     [BCInstrCode.HALT, "HALT"],
-    [BCInstrCode.ADD, "ADD"],
-    [BCInstrCode.SUB, "SUB"],
-    [BCInstrCode.MUL, "MUL"],
-    [BCInstrCode.DIV, "DIV"],
-    [BCInstrCode.NEG, "NEG"],
-    [BCInstrCode.AND, "AND"],
-    [BCInstrCode.OR, "OR"],
-    [BCInstrCode.NOT, "NOT"],
-    [BCInstrCode.XOR, "XOR"],
-    [BCInstrCode.CMP_EQ, "CMP_EQ"],
-    [BCInstrCode.CMP_LT, "CMP_LT"],
-    [BCInstrCode.CMP_GT, "CMP_GT"],
 ]);
 
 class BCInstr {
@@ -219,18 +198,6 @@ export const BCInstrArityMap = new Map<BCInstrCode, number>([
     [BCInstrCode.RETURN, 0],
     [BCInstrCode.POP, 0],
     [BCInstrCode.HALT, 0],
-    [BCInstrCode.ADD, 0],
-    [BCInstrCode.SUB, 0],
-    [BCInstrCode.MUL, 0],
-    [BCInstrCode.DIV, 0],
-    [BCInstrCode.NEG, 0],
-    [BCInstrCode.AND, 0],
-    [BCInstrCode.OR, 0],
-    [BCInstrCode.NOT, 0],
-    [BCInstrCode.XOR, 0],
-    [BCInstrCode.CMP_EQ, 0],
-    [BCInstrCode.CMP_LT, 0],
-    [BCInstrCode.CMP_GT, 0],
 ]);
 
 export const enum BCDataTag {
@@ -272,7 +239,6 @@ export function createEmitter(): {
             if (!(arg instanceof BCString))
                 throw new Error("expected a string label");
 
-            console.log(instructions.length);
             label_positions.set(arg.value, instructions.length);
             return;
         }
@@ -526,35 +492,200 @@ export interface BCProcedure {
 
 export type ConstantPool = { [key: number]: BCData };
 
+function tokenToBCConstant(tok: Token) {
+    switch (tok.type) {
+        case TokenType.VOID: {
+            return new BCNil();
+        }
+
+        case TokenType.NUM: {
+            if (parseFloat(tok.literal) === parseInt(tok.literal))
+                return new BCInteger(parseInt(tok.literal));
+
+            if (!Number.isNaN(parseFloat(tok.literal)))
+                return new BCFloat(parseFloat(tok.literal));
+
+            throw new Error(`illegal ANF number literal`);
+        }
+
+        // TODO:
+        case TokenType.SYM:
+        case TokenType.BOOL:
+        case TokenType.STR:
+        case TokenType.IDENT:
+        case TokenType.CHAR:
+        case TokenType.PROCEDURE:
+        case TokenType.LIST:
+
+        case TokenType.QUOTE:
+        case TokenType.FORM:
+        case TokenType.LPAREN:
+        case TokenType.RPAREN:
+        case TokenType.META:
+        case TokenType.MULTI:
+        case TokenType.ANY:
+        case TokenType.ERROR:
+        case TokenType.EOF:
+            throw new Error(`illegal ANF value of type ${TOKEN_PRINT_TYPE_MAP[tok.type]}`);
+    }
+}
+
 export class BCCompiler {
     intern_table: BCInternTable = new BCInternTable();
+    private procedures: BCProcedure[] = [];
+    private pending_procedures: {
+        proc_index: number,
+        lambda: ANFLambda,
+    }[] = [];
 
     compileInstructions(anf: ANFProgram, consts: ConstantTable): BCInstr[] {
         const { emit, label, patch_labels, instructions } = createEmitter();
 
-        emit(new BCInstr(BCInstrCode.LOAD_CONST, new BCInteger(consts.intern(new BCInteger(10)))));
-        emit(new BCInstr(BCInstrCode.STORE_VAR, new BCIdent("x", this.intern_table)));
+        let label_idx = 0;
 
-        label("loop");
-        emit(new BCInstr(BCInstrCode.LOAD_VAR, new BCIdent("x", this.intern_table)));
-        emit(new BCInstr(BCInstrCode.LOAD_CONST, new BCInteger(consts.intern(new BCInteger(0)))));
-        emit(new BCInstr(BCInstrCode.CMP_GT));
-        emit(new BCInstr(BCInstrCode.JMP_FALSE, new BCString("end")));
+        const compileANFExpr = (anf: ANFExpr) => {
+            if (anf instanceof ANFLet) {
+                compileANFExpr(anf.value);
+                emit(
+                    new BCInstr(
+                        BCInstrCode.STORE_VAR,
+                        new BCIdent(anf.name.name, this.intern_table),
+                    )
+                );
+                compileANFExpr(anf.body);
+                return;
 
-        emit(new BCInstr(BCInstrCode.LOAD_VAR, new BCIdent("x", this.intern_table)));
-        emit(new BCInstr(BCInstrCode.LOAD_CONST, new BCInteger(consts.intern(new BCInteger(1)))));
-        emit(new BCInstr(BCInstrCode.SUB));
-        emit(new BCInstr(BCInstrCode.STORE_VAR, new BCIdent("x", this.intern_table)));
-        emit(new BCInstr(BCInstrCode.JMP, new BCString("loop")));
+            } else if (anf instanceof ANFApp) {
+                if (!(anf.callee instanceof ANFVar ||
+                    anf.callee instanceof ANFLambda ||
+                    anf.callee instanceof ANFLiteral)) {
+                    throw new Error(`illegal ANF function application; expected an atom`);
+                }
 
-        label("end");
+                if (anf.callee instanceof ANFVar) {
+                    const prim = lookupPrimitive(anf.callee.name.name);
+
+                    if (prim) {
+                        emit(
+                            new BCInstr(
+                                BCInstrCode.LOAD_VAR,
+                                new BCIdent(anf.callee.name.name, this.intern_table),
+                            )
+                        );
+
+                        for (const arg of anf.args)
+                            compileANFExpr(arg);
+
+                        emit(new BCInstr(
+                            BCInstrCode.CALL,
+                            new BCInteger(anf.args.length)
+                        ));
+
+                        return;
+                    }
+                }
+
+                compileANFExpr(anf.callee);
+                for (const arg of anf.args)
+                    compileANFExpr(arg);
+
+                emit(
+                    new BCInstr(
+                        BCInstrCode.CALL,
+                        new BCInteger(anf.args.length),
+                    )
+                );
+                return;
+
+            } else if (anf instanceof ANFLiteral) {
+                const val = tokenToBCConstant(anf.value);
+                const c = consts.intern(val);
+                emit(
+                    new BCInstr(
+                        BCInstrCode.LOAD_CONST,
+                        new BCInteger(c)
+                    )
+                );
+                return;
+
+            } else if (anf instanceof ANFVar) {
+                // TODO: closures
+                emit(
+                    new BCInstr(
+                        BCInstrCode.LOAD_VAR, // FIXME: name is not id
+                        new BCIdent(anf.name.name, this.intern_table),
+                    )
+                );
+                return;
+
+            } else if (anf instanceof ANFIf) {
+                const else_label = `else${label_idx++}`;
+                const end_label = `end${label_idx++}`;
+
+                compileANFExpr(anf.cond);
+                emit(
+                    new BCInstr(
+                        BCInstrCode.JMP_FALSE,
+                        new BCString(else_label),
+                    )
+                );
+
+                compileANFExpr(anf.then_branch);
+                emit(
+                    new BCInstr(
+                        BCInstrCode.JMP,
+                        new BCString(end_label),
+                    )
+                );
+
+                label(else_label);
+                compileANFExpr(anf.else_branch);
+
+                label(end_label);
+                return;
+
+            } else if (anf instanceof ANFLambda) {
+                const free_vars = this.computeFreeVars(anf);
+
+                const proc_index = this.reserveProcedure(
+                    anf.params.length,
+                    0,
+                    free_vars
+                );
+
+                emit(
+                    new BCInstr(
+                        BCInstrCode.MAKE_CLOSURE,
+                        new BCInteger(proc_index),
+                        new BCInteger(free_vars.length),
+                    )
+                );
+
+                this.pending_procedures.push({
+                    proc_index,
+                    lambda: anf,
+                });
+
+                return;
+            }
+
+            throw new Error("unknown ANF node type");
+        }
+
+        compileANFExpr(anf.body);
         emit(new BCInstr(BCInstrCode.HALT));
+
+        for (const proc of this.pending_procedures) {
+            this.procedures[proc.proc_index].entry = instructions.length;
+            compileANFExpr(proc.lambda.body);
+            emit(new BCInstr(BCInstrCode.RETURN));
+        }
 
         patch_labels();
         return instructions;
     }
 
-    header(): Uint8Array {
+    private header(): Uint8Array {
         let head = new Uint8Array(BYTECODE_HEADER_SIZE);
         head.set(BYTECODE_MAGIC_BYTES, 0);                      // magic bytes
         head.set(splitUint16(VERSION_ID), 4);                   // version id
@@ -564,7 +695,7 @@ export class BCCompiler {
         return head;
     }
 
-    symbolTable(table: BCInternTable): Uint8Array {
+    private symbolTable(table: BCInternTable): Uint8Array {
         const tmp: Byte[] = [...splitUint32(table.size)];
         for (const [id, name] of table) {
             const encoded = new TextEncoder().encode(name);
@@ -579,7 +710,7 @@ export class BCCompiler {
         return new Uint8Array(tmp);
     }
 
-    constantPool(table: ConstantTable): Uint8Array {
+    private constantPool(table: ConstantTable): Uint8Array {
         const constants = table.values();
         const tmp: Byte[] = [...splitUint32(constants.length)];
         for (const c of constants) {
@@ -598,8 +729,65 @@ export class BCCompiler {
         return new Uint8Array(tmp);
     }
 
-    procedureTable(procs: BCProcedure[]): Uint8Array {
-        const tmp: number[] = [];
+    private reserveProcedure(arity: number, locals: number, free_vars: number[]) {
+        const idx = this.procedures.length;
+        this.procedures.push({ entry: -1, arity, locals, free_vars });
+        return idx;
+    }
+
+    private collectFreeVars(expr: ANFExpr, bound: Set<string>, free: Set<string>) {
+        if (expr instanceof ANFVar) {
+            const name = expr.name.name;
+            if (!bound.has(name)) {
+                free.add(name);
+            }
+
+            return;
+        }
+
+        if (expr instanceof ANFLiteral) return;
+        if (expr instanceof ANFLambda) return;
+
+        if (expr instanceof ANFApp) {
+            this.collectFreeVars(expr.callee, bound, free);
+            for (const arg of expr.args)
+                this.collectFreeVars(arg, bound, free);
+            return;
+        }
+
+        if (expr instanceof ANFIf) {
+            this.collectFreeVars(expr.cond, bound, free);
+            this.collectFreeVars(expr.then_branch, bound, free);
+            this.collectFreeVars(expr.else_branch, bound, free);
+        }
+
+        if (expr instanceof ANFLet) {
+            this.collectFreeVars(expr.value, bound, free);
+
+            const name = expr.name.name;
+            bound.add(name);
+            this.collectFreeVars(expr.body, bound, free);
+            bound.delete(name);
+            return;
+        }
+    }
+
+    private computeFreeVars(lambda: ANFLambda): number[] {
+        const bound = new Set<string>();
+
+        for (const param of lambda.params) {
+            bound.add(param.name);
+        }
+
+        const free = new Set<string>();
+        this.collectFreeVars(lambda.body, bound, free);
+
+        return Array.from(free).map(name =>
+            this.intern_table.internNamedBCSymbol(name));
+    }
+
+    private procedureTable(procs: BCProcedure[]): Uint8Array {
+        const tmp: number[] = [...splitUint32(procs.length)];
         for (const proc of procs) {
             tmp.push(...splitUint32(proc.entry));
             tmp.push(...splitUint16(proc.arity));
@@ -616,7 +804,7 @@ export class BCCompiler {
         return new Uint8Array(tmp);
     }
 
-    sectionTable(sections: BCSection[]) {
+    private sectionTable(sections: BCSection[]) {
         if (sections.length >= 256)
             throw new Error(`got ${sections.length} sections; expected at most 255 sections`);
 
@@ -637,9 +825,22 @@ export class BCCompiler {
         return new Uint8Array(tmp);
     }
 
+    private reservePrimitiveProcedures() {
+        for (const prim of BRACKET_PRIMITIVES) {
+            this.intern_table.internNamedBCSymbol(prim.name);
+            this.procedures.push({
+                entry: BYTECODE_PRIMITIVE_ENTRY,
+                arity: prim.arity,
+                locals: 0,
+                free_vars: []
+            });
+        }
+    }
+
     compile(anf: ANFProgram): Uint8Array {
         const consts = new ConstantTable();
-        const procs: BCProcedure[] = [];
+
+        this.reservePrimitiveProcedures();
 
         const instructions = this.compileInstructions(anf, consts);
 
@@ -671,7 +872,7 @@ export class BCCompiler {
         const head = this.header();
         const symbols = this.symbolTable(this.intern_table);
         const constants = this.constantPool(consts);
-        const procedures = this.procedureTable(procs);
+        const procedures = this.procedureTable(this.procedures);
         const bytecode = buf.slice(0, pc);
 
         let section_offset = BYTECODE_HEADER_SIZE;

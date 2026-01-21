@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-char* readFile(const char* path, size_t* out_size) {
+char* read_file(const char* path, size_t* out_size) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
         fprintf(stderr, "could not open file \"%s\"", path);
@@ -35,7 +35,7 @@ char* readFile(const char* path, size_t* out_size) {
     return buffer;
 }
 
-uint8_t read_uint8(Reader* r) {
+static uint8_t read_uint8(Reader* r) {
     if (r->cur + 1 > r->end) {
         fprintf(stderr, "attempted to read out of bounds\n");
         exit(EXIT_READ_OUT_OF_BOUNDS);
@@ -47,7 +47,7 @@ uint8_t read_uint8(Reader* r) {
     return p[0];
 }
 
-uint16_t read_uint16(Reader* r) {
+static uint16_t read_uint16(Reader* r) {
     if (r->cur + 2 > r->end) {
         fprintf(stderr, "attempted to read out of bounds\n");
         exit(EXIT_READ_OUT_OF_BOUNDS);
@@ -59,7 +59,7 @@ uint16_t read_uint16(Reader* r) {
     return ((uint16_t)p[0]) | ((uint16_t)p[1] << 8);
 }
 
-uint32_t read_uint32(Reader* r) {
+static uint32_t read_uint32(Reader* r) {
     if (r->cur + 4 > r->end) {
         fprintf(stderr, "attempted to read out of bounds\n");
         exit(EXIT_READ_OUT_OF_BOUNDS);
@@ -72,7 +72,7 @@ uint32_t read_uint32(Reader* r) {
            ((uint32_t)p[3] << 24);
 }
 
-uint8_t* read_bytes(Reader* r, size_t bytes) {
+static uint8_t* read_bytes(Reader* r, size_t bytes) {
     if (r->cur + bytes > r->end) {
         fprintf(stderr, "attempted to read out of bounds\n");
         exit(EXIT_READ_OUT_OF_BOUNDS);
@@ -89,11 +89,11 @@ uint8_t* read_bytes(Reader* r, size_t bytes) {
     return b;
 }
 
-void skip_bytes(Reader* r, size_t bytes) {
+static void skip_bytes(Reader* r, size_t bytes) {
     r->cur += bytes;
 }
 
-BVMConstant read_datum(Reader* r) {
+static BVMConstant read_datum(Reader* r) {
     uint8_t tag = read_uint8(r);
 
     switch (tag >> 3) {
@@ -137,7 +137,7 @@ BVMConstant read_datum(Reader* r) {
     exit(EXIT_FAILURE);
 }
 
-array_const read_datums(Reader* r, size_t count) {
+static array_const read_datums(Reader* r, size_t count) {
     array_const result;
     result.length   = 0;
     result.capacity = count;
@@ -151,23 +151,57 @@ array_const read_datums(Reader* r, size_t count) {
     return result;
 }
 
-uint8_t opArity(BVMInstrCode code) {
+static BVMPrimitiveKind primitive_of_proc(uint32_t proc_idx) {
+    switch (proc_idx) {
+        case 0: return PRIM_ADD;
+        case 1: return PRIM_SUB;
+        case 2: return PRIM_MUL;
+        case 3: return PRIM_DIV;
+        case 4: return PRIM_CMP_EQ;
+        case 5: return PRIM_CMP_LT;
+        case 6: return PRIM_CMP_GT;
+        case 7: return PRIM_NOT;
+        default:
+            fprintf(stderr, "unknown primitive procedure index\n");
+            exit(EXIT_FAILURE);
+    }
+}
+
+static BVMValue execute_primitive(BVMPrimitiveKind prim, BVMValue* args) {
+    switch (prim) {
+        case PRIM_ADD:
+            return (BVMValue){ .tag = TAG_INT, .as.i = args[0].as.i + args[1].as.i };
+
+        case PRIM_SUB:
+            return (BVMValue){ .tag = TAG_INT, .as.i = args[0].as.i - args[1].as.i };
+
+        case PRIM_MUL:
+            return (BVMValue){ .tag = TAG_INT, .as.i = args[0].as.i * args[1].as.i };
+
+        case PRIM_DIV:
+            return (BVMValue){ .tag = TAG_INT, .as.i = args[0].as.i / args[1].as.i };
+
+        case PRIM_CMP_EQ:
+            return (BVMValue){ .tag = TAG_BOOL, .as.i = args[0].as.i == args[1].as.i };
+
+        case PRIM_CMP_LT:
+            return (BVMValue){ .tag = TAG_BOOL, .as.i = args[0].as.i < args[1].as.i };
+
+        case PRIM_CMP_GT:
+            return (BVMValue){ .tag = TAG_BOOL, .as.i = args[0].as.i > args[1].as.i };
+
+        case PRIM_NOT: return (BVMValue){ .tag = TAG_BOOL, .as.i = !args[0].as.i };
+    }
+
+    fprintf(stderr, "unhandled primitive\n");
+    exit(EXIT_FAILURE);
+}
+
+static uint8_t op_arity(BVMInstrCode code) {
     switch (code) {
         case OP_RETURN: return 0;
         case OP_POP: return 0;
         case OP_HALT: return 0;
-        case OP_ADD: return 0;
-        case OP_SUB: return 0;
-        case OP_MUL: return 0;
-        case OP_DIV: return 0;
-        case OP_NEG: return 0;
-        case OP_AND: return 0;
-        case OP_OR: return 0;
-        case OP_NOT: return 0;
-        case OP_XOR: return 0;
-        case OP_CMP_EQ: return 0;
-        case OP_CMP_LT: return 0;
-        case OP_CMP_GT: return 0;
 
         case OP_LOAD_CONST: return 1;
         case OP_LOAD_VAR: return 1;
@@ -187,7 +221,41 @@ uint8_t opArity(BVMInstrCode code) {
     return 0;
 }
 
-void initBVMProgram(const void* bin, size_t bin_size, BVMProgram* bvm) {
+static uint32_t alloc_env(BVM* bvm, uint32_t parent, uint16_t size) {
+    if (bvm->env_count >= bvm->env_capacity) {
+        bvm->env_capacity *= ARRAY_GROW_FACTOR;
+        bvm->envs = realloc(bvm->envs, bvm->env_capacity * sizeof(BVMEnv));
+        if (!bvm->envs) {
+            fprintf(stderr, "failed to grow environment store\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    uint32_t idx          = bvm->env_count++;
+    bvm->envs[idx].parent = parent;
+    bvm->envs[idx].size   = size;
+    bvm->envs[idx].slots  = calloc(size, sizeof(BVMValue));
+
+    if (!bvm->envs[idx].slots) {
+        fprintf(stderr, "failed to allocate environment slots\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return idx;
+}
+
+// TODO: constant time lookups
+static int symbol_id_of(BVMProgram* program, const char* name) {
+    for (uint32_t i = 0; i < program->symbol_count; i++) {
+        if (strncmp(program->symbols[i].name, name, program->symbols[i].name_len) == 0) {
+            return program->symbols[i].id;
+        }
+    }
+
+    return -1;
+}
+
+void init_bvm_program(const void* bin, size_t bin_size, BVMProgram* bvm) {
     Reader reader = {
         .start = (const uint8_t*)bin,
         .cur   = (const uint8_t*)bin,
@@ -299,7 +367,34 @@ void initBVMProgram(const void* bin, size_t bin_size, BVMProgram* bvm) {
                 break;
             }
 
-            case S_TAG_PROCEDURE_TABLE: break;
+            case S_TAG_PROCEDURE_TABLE: {
+                uint32_t      procedure_count = read_uint32(&reader);
+                BVMProcedure* procedures =
+                  (BVMProcedure*)malloc(procedure_count * sizeof(BVMProcedure));
+
+                for (size_t proc_idx = 0; proc_idx < procedure_count; proc_idx++) {
+                    uint32_t entry  = read_uint32(&reader);
+                    uint32_t arity  = read_uint16(&reader);
+                    uint32_t locals = read_uint16(&reader);
+
+                    uint32_t  free_var_count = read_uint16(&reader);
+                    uint32_t* free_vars =
+                      (uint32_t*)malloc(free_var_count * sizeof(uint32_t));
+                    for (size_t i = 0; i < free_var_count; i++) {
+                        free_vars[i] = read_uint32(&reader);
+                    }
+
+                    procedures[proc_idx] = (BVMProcedure){ .arity       = arity,
+                                                           .free_vars   = free_vars,
+                                                           .free_count  = free_var_count,
+                                                           .local_count = locals,
+                                                           .entry_pc    = entry };
+                }
+
+                bvm->procedure_count = procedure_count;
+                bvm->procedures      = procedures;
+                break;
+            };
 
             case S_TAG_BYTECODE: {
                 uint8_t* bytecode = read_bytes(&reader, section.size);
@@ -311,7 +406,7 @@ void initBVMProgram(const void* bin, size_t bin_size, BVMProgram* bvm) {
                 size_t instruction_count = 0;
                 while (count_r.cur < count_r.end) {
                     BVMInstrCode opcode = read_uint8(&count_r);
-                    uint8_t      arity  = opArity(opcode);
+                    uint8_t      arity  = op_arity(opcode);
 
                     for (uint8_t i = 0; i < arity; i++) {
                         (void)read_datum(&count_r);
@@ -333,7 +428,7 @@ void initBVMProgram(const void* bin, size_t bin_size, BVMProgram* bvm) {
 
                 for (size_t i = 0; i < instruction_count; i++) {
                     BVMInstrCode opcode = read_uint8(&bcr);
-                    uint8_t      arity  = opArity(opcode);
+                    uint8_t      arity  = op_arity(opcode);
 
                     array_const args = read_datums(&bcr, arity);
                     instructions[i] =
@@ -358,9 +453,9 @@ void initBVMProgram(const void* bin, size_t bin_size, BVMProgram* bvm) {
     }
 }
 
-void freeBVMProgram(BVMProgram* bvm) {}
+void free_bvm_program(const BVMProgram* bvm) {}
 
-void initBVM(BVM* bvm, const BVMProgram* program) {
+void init_bvm(BVM* bvm, const BVMProgram* program) {
     if (bvm == NULL || program == NULL) {
         fprintf(stderr, "initBVMExec: invalid arguments\n");
         exit(EXIT_FAILURE);
@@ -422,9 +517,41 @@ void initBVM(BVM* bvm, const BVMProgram* program) {
              .env_idx    = bvm->global_env,
              .stack_base = 0,
     };
+
+    /* ==================== Primitives ========================== */
+
+    for (uint32_t i = 0; i < bvm->program->procedure_count; i++) {
+        BVMProcedure* proc = &bvm->program->procedures[i];
+
+        if (proc->entry_pc != BVM_PRIMITIVE_ENTRY) continue;
+
+        const char* prim_name = NULL;
+
+        switch (primitive_of_proc(i)) {
+            case PRIM_ADD: prim_name = "+"; break;
+            case PRIM_SUB: prim_name = "-"; break;
+            case PRIM_MUL: prim_name = "*"; break;
+            case PRIM_DIV: prim_name = "/"; break;
+            case PRIM_CMP_EQ: prim_name = "="; break;
+            case PRIM_CMP_LT: prim_name = "<"; break;
+            case PRIM_CMP_GT: prim_name = ">"; break;
+            case PRIM_NOT: prim_name = "not"; break;
+        }
+
+        int sym_id = symbol_id_of((BVMProgram*)bvm->program, prim_name);
+        if (sym_id < 0) {
+            fprintf(stderr, "primitive symbol not found: %s\n", prim_name);
+            exit(EXIT_FAILURE);
+        }
+
+        bvm->envs[bvm->global_env].slots[sym_id] = (BVMValue){
+            .tag        = TAG_PROC,
+            .as.closure = { .proc_idx = i, .env_idx = UINT32_MAX }
+        };
+    }
 }
 
-void freeBVM(BVM* bvm) {
+void free_bvm(BVM* bvm) {
     if (bvm == NULL) return;
 
     free(bvm->stack.data);
@@ -435,9 +562,10 @@ void freeBVM(BVM* bvm) {
     }
 
     free(bvm->envs);
+    free_bvm_program(bvm->program);
 }
 
-BVMValue makeValueFromConstant(BVMConstant* c) {
+static BVMValue make_value_from_constant(BVMConstant* c) {
     switch (c->tag >> 3) {
         case TAG_INT: return (BVMValue){ .tag = TAG_INT, .as.i = *(int32_t*)c->data };
 
@@ -471,7 +599,7 @@ BVMValue makeValueFromConstant(BVMConstant* c) {
     exit(EXIT_FAILURE);
 };
 
-BVMValue popStack(BVMStack* stack) {
+static BVMValue pop_stack(BVMStack* stack) {
     if (stack->top == 0) {
         fprintf(stderr, "stack underflow\n");
         exit(EXIT_FAILURE);
@@ -480,8 +608,7 @@ BVMValue popStack(BVMStack* stack) {
     return stack->data[--stack->top];
 }
 
-// TODO: Dynamic stack
-void pushStack(BVMStack* stack, BVMValue val) {
+static void push_stack(BVMStack* stack, BVMValue val) {
     if (stack->top >= stack->capacity) {
         fprintf(stderr, "stack overflow\n");
         exit(EXIT_FAILURE);
@@ -498,7 +625,7 @@ static inline BVMConstant* operand_at(BVMInstruction* instr, uint8_t index) {
     return &instr->operand[index];
 }
 
-void executeBVM(BVM* bvm) {
+void execute_bvm(BVM* bvm) {
     BVMInstruction* code_start = bvm->program->bytecode;
     BVMInstruction* pc         = code_start;
     BVMInstruction* code_end   = code_start + bvm->program->instruction_count;
@@ -517,7 +644,7 @@ void executeBVM(BVM* bvm) {
             }
 
             case OP_POP: {
-                popStack(&bvm->stack);
+                pop_stack(&bvm->stack);
                 pc++;
                 break;
             }
@@ -533,8 +660,8 @@ void executeBVM(BVM* bvm) {
                 uint32_t idx = *(uint32_t*)op->data;
 
                 BVMConstant* c = &bvm->program->constants[idx];
-                BVMValue     v = makeValueFromConstant(c);
-                pushStack(&bvm->stack, v);
+                BVMValue     v = make_value_from_constant(c);
+                push_stack(&bvm->stack, v);
                 pc++;
                 break;
             }
@@ -550,7 +677,7 @@ void executeBVM(BVM* bvm) {
                     exit(EXIT_FAILURE);
                 }
 
-                pushStack(&bvm->stack, env->slots[sym_id]);
+                push_stack(&bvm->stack, env->slots[sym_id]);
                 pc++;
                 break;
             }
@@ -572,73 +699,9 @@ void executeBVM(BVM* bvm) {
                     exit(EXIT_FAILURE);
                 }
 
-                BVMValue value     = popStack(&bvm->stack);
+                BVMValue value     = pop_stack(&bvm->stack);
                 env->slots[sym_id] = value;
 
-                pc++;
-                break;
-            }
-
-            case OP_ADD: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_INT, .as.i = a.as.i + b.as.i });
-                pc++;
-                break;
-            }
-
-            case OP_SUB: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_INT, .as.i = a.as.i - b.as.i });
-                pc++;
-                break;
-            }
-
-            case OP_MUL: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_INT, .as.i = a.as.i * b.as.i });
-                pc++;
-                break;
-            }
-
-            case OP_DIV: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_INT, .as.i = a.as.i / b.as.i });
-                pc++;
-                break;
-            }
-
-            case OP_CMP_LT: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_BOOL, .as.b = (a.as.i < b.as.i) });
-                pc++;
-                break;
-            }
-
-            case OP_CMP_GT: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_BOOL, .as.b = (a.as.i > b.as.i) });
-                printf("checking %zu > %zu\n", a.as.i, b.as.i);
-                pc++;
-                break;
-            }
-
-            case OP_CMP_EQ: {
-                BVMValue b = popStack(&bvm->stack);
-                BVMValue a = popStack(&bvm->stack);
-                pushStack(&bvm->stack,
-                          (BVMValue){ .tag = TAG_BOOL, .as.b = (a.as.i == b.as.i) });
                 pc++;
                 break;
             }
@@ -653,7 +716,7 @@ void executeBVM(BVM* bvm) {
             case OP_JMP_TRUE: {
                 BVMConstant* op     = operand_at(pc, 0);
                 int32_t      offset = *(int32_t*)op->data;
-                BVMValue     cond   = popStack(&bvm->stack);
+                BVMValue     cond   = pop_stack(&bvm->stack);
                 if (cond.as.b) {
                     pc += offset;
                 } else {
@@ -665,7 +728,7 @@ void executeBVM(BVM* bvm) {
             case OP_JMP_FALSE: {
                 BVMConstant* op     = operand_at(pc, 0);
                 int32_t      offset = *(int32_t*)op->data;
-                BVMValue     cond   = popStack(&bvm->stack);
+                BVMValue     cond   = pop_stack(&bvm->stack);
                 if (cond.as.b) {
                     pc++;
                 } else {
@@ -675,7 +738,7 @@ void executeBVM(BVM* bvm) {
             }
 
             case OP_RETURN: {
-                BVMValue ret   = popStack(&bvm->stack);
+                BVMValue ret   = pop_stack(&bvm->stack);
                 BVMFrame frame = bvm->frames[--bvm->frame_count];
 
                 if (frame.return_pc == UINT32_MAX) {
@@ -686,7 +749,9 @@ void executeBVM(BVM* bvm) {
                 bvm->current_env = frame.env_idx;
                 bvm->stack.top   = frame.stack_base;
 
-                pushStack(&bvm->stack, ret);
+                printf("tag: %b, value: %li\n", ret.tag, ret.as.i);
+
+                push_stack(&bvm->stack, ret);
                 pc = code_start + frame.return_pc;
                 break;
             }
@@ -694,6 +759,117 @@ void executeBVM(BVM* bvm) {
             case OP_LABEL: {
                 fprintf(stderr, "unexpected LABEL operator in bytecode\n");
                 bvm->error = 1;
+                break;
+            }
+
+            case OP_MAKE_CLOSURE: {
+                uint32_t      proc_idx = *(uint32_t*)operand_at(pc, 0)->data;
+                BVMProcedure* proc     = &bvm->program->procedures[proc_idx];
+
+                uint32_t env_idx = alloc_env(bvm, bvm->current_env, proc->free_count);
+                BVMEnv*  env     = &bvm->envs[env_idx];
+
+                for (uint16_t i = 0; i < proc->free_count; i++) {
+                    uint32_t sym_id = proc->free_vars[i];
+                    env->slots[i]   = bvm->envs[bvm->current_env].slots[sym_id];
+                }
+
+                push_stack(&bvm->stack, (BVMValue){
+                                          .tag        = TAG_PROC,
+                                          .as.closure = { .proc_idx = proc_idx,
+                                                         .env_idx  = env_idx }
+                });
+
+                pc++;
+                break;
+            }
+
+            case OP_LOAD_CLOSURE: {
+                uint32_t idx         = *(uint32_t*)operand_at(pc, 0)->data;
+                uint32_t closure_env = bvm->envs[bvm->current_env].parent;
+
+                if (closure_env == UINT32_MAX) {
+                    fprintf(stderr, "LOAD_CLOSURE outside closure\n");
+                    bvm->error = 1;
+                    break;
+                }
+
+                push_stack(&bvm->stack, bvm->envs[closure_env].slots[idx]);
+                pc++;
+                break;
+            }
+
+            case OP_STORE_CLOSURE: {
+                uint32_t idx                      = *(uint32_t*)operand_at(pc, 0)->data;
+                uint32_t closure_env              = bvm->envs[bvm->current_env].parent;
+                bvm->envs[closure_env].slots[idx] = pop_stack(&bvm->stack);
+                pc++;
+                break;
+            }
+
+            case OP_CALL: {
+                uint32_t argc = *(uint32_t*)operand_at(pc, 0)->data;
+
+                BVMValue args[argc];
+                for (int i = argc - 1; i >= 0; i--) {
+                    args[i] = pop_stack(&bvm->stack);
+                }
+
+                BVMValue callee = pop_stack(&bvm->stack);
+                if (callee.tag != TAG_PROC) {
+                    fprintf(stderr, "attempted to call non-procedure\n");
+                    bvm->error = 1;
+                    break;
+                }
+
+                BVMProcedure* proc =
+                  &bvm->program->procedures[callee.as.closure.proc_idx];
+
+                if (proc->entry_pc == BVM_PRIMITIVE_ENTRY) {
+                    BVMPrimitiveKind prim = primitive_of_proc(callee.as.closure.proc_idx);
+                    BVMValue         result = execute_primitive(prim, args);
+
+                    push_stack(&bvm->stack, result);
+                    pc++;
+                    break;
+                }
+
+                if (argc != proc->arity) {
+                    fprintf(stderr, "arity mismatch: expected %d arguments, got %d",
+                            proc->arity, argc);
+                    bvm->error = 1;
+                    break;
+                }
+
+                uint32_t env_idx = alloc_env(bvm, callee.as.closure.env_idx,
+                                             proc->arity + proc->local_count);
+
+                BVMEnv* env = &bvm->envs[env_idx];
+
+                for (uint16_t i = 0; i < proc->arity; i++) {
+                    env->slots[i] = args[i];
+                }
+
+                if (bvm->frame_count >= bvm->frame_capacity) {
+                    bvm->frame_capacity *= ARRAY_GROW_FACTOR;
+                    bvm->frames =
+                      realloc(bvm->frames, bvm->frame_capacity * sizeof(BVMFrame));
+
+                    if (!bvm->frames) {
+                        fprintf(stderr, "failed to grow frame stack\n");
+                        bvm->error = 1;
+                        break;
+                    }
+                }
+
+                bvm->frames[bvm->frame_count++] =
+                  (BVMFrame){ .return_pc  = (uint32_t)(pc - bvm->program->bytecode + 1),
+                              .env_idx    = bvm->current_env,
+                              .stack_base = bvm->stack.top };
+
+                bvm->current_env = env_idx;
+                pc               = code_start + proc->entry_pc;
+
                 break;
             }
 
@@ -717,12 +893,12 @@ int main(int argc, char* argv[]) {
 
     const char* path = argv[1];
     size_t      bin_size;
-    char*       bin = readFile(path, &bin_size);
-    initBVMProgram(bin, bin_size, &bvm_program);
-    initBVM(&bvm, &bvm_program);
+    char*       bin = read_file(path, &bin_size);
+    init_bvm_program(bin, bin_size, &bvm_program);
+    init_bvm(&bvm, &bvm_program);
 
-    executeBVM(&bvm);
+    execute_bvm(&bvm);
 
-    freeBVM(&bvm);
-    freeBVMProgram(&bvm_program);
+    free_bvm(&bvm);
+    free_bvm_program(&bvm_program);
 }

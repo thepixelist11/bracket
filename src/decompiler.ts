@@ -1,10 +1,10 @@
 import { ASTSExprNode, ASTProcedureNode, ASTLiteralNode, ASTProgram, ASTNode } from "./ast.js";
 import { TokenType, BOOL_FALSE, BOOL_TRUE, TokenMetadataInjector, Token, RuntimeSymbol } from "./token.js";
 import { Lexer } from "./lexer.js";
-import { readFloat64, readInt32, readString, readUint16, readUint32, readUint8, toByteString } from "./utils.js";
+import { printDeep, readFloat64, readInt32, readString, readUint16, readUint32, readUint8, toByteString } from "./utils.js";
 import { BYTECODE_FLAG_ATTRIBUTE, BYTECODE_FLAG_DEBUG, BYTECODE_FLAG_LINE_INFO, BYTECODE_FLAG_OPTIMIZED, BYTECODE_FLAG_SOURCE_MAP, BYTECODE_FLAG_TYPE_INFO, BYTECODE_HEADER_SIZE, BYTECODE_MAGIC_BYTES, BYTECODE_SECTION_TAG_BYTECODE, BYTECODE_SECTION_TAG_CONSTANT_POOL, BYTECODE_SECTION_TAG_PROCEDURE_TABLE, BYTECODE_SECTION_TAG_SYMBOL_TABLE, DECOMPILER_CLOSING_ON_NEW_LINE, VERSION_ID, VERSION_ID_TO_NUMBER } from "./globals.js";
 import { ANFApp, ANFIf, ANFLambda, ANFLet, ANFLiteral, ANFProgram, ANFVar, ANF } from "./anf.js";
-import { BCBoolean, BCData, BCDataTag, BCFloat, BCIdent, BCInstrArityMap, BCInstrCode, BCInstrPrintMap, BCInteger, BCInternTable, BCNil, BCSection, BCString, BCSymbol, ConstantPool } from "./compiler.js";
+import { BCBoolean, BCData, BCDataTag, BCFloat, BCIdent, BCInstrArityMap, BCInstrCode, BCInstrPrintMap, BCInteger, BCInternTable, BCNil, BCProcedure, BCSection, BCString, BCSymbol, ConstantPool } from "./compiler.js";
 
 interface RenderCtx {
     indent: number;
@@ -599,6 +599,38 @@ function readConstantPool(buf: Uint8Array, sym_table: BCInternTable, offset: num
     return constant_pool;
 }
 
+function readProcedureTable(buf: Uint8Array, offset: number) {
+    const procedure_table: BCProcedure[] = [];
+    const procedure_count = readUint32(buf, offset);
+    offset += 4;
+
+    for (let proc_idx = 0; proc_idx < procedure_count; proc_idx++) {
+        const entry = readUint32(buf, offset);
+        offset += 4;
+
+        const arity = readUint16(buf, offset);
+        offset += 2;
+
+        const locals = readUint16(buf, offset);
+        offset += 2;
+
+        const free_var_count = readUint16(buf, offset);
+        offset += 2;
+
+        const free_vars: number[] = [];
+        for (let i = 0; i < free_var_count; i++) {
+            free_vars.push(readUint32(buf, offset));
+            offset += 4;
+        }
+
+        const procedure: BCProcedure = { entry, arity, locals, free_vars };
+
+        procedure_table.push(procedure);
+    }
+
+    return procedure_table;
+}
+
 function symbolTableToString(table: BCInternTable) {
     let out = "";
     let max_sym_length = 3;
@@ -667,6 +699,7 @@ export function binaryFileToString(buf: Uint8Array) {
 
     const sym_table = readSymbolTable(buf, section_table[BYTECODE_SECTION_TAG_SYMBOL_TABLE].offset);
     const const_pool = readConstantPool(buf, sym_table, section_table[BYTECODE_SECTION_TAG_CONSTANT_POOL].offset);
+    const procedure_table = readProcedureTable(buf, section_table[BYTECODE_SECTION_TAG_PROCEDURE_TABLE].offset);
     const bytecode_section = section_table[BYTECODE_SECTION_TAG_BYTECODE];
     const bytecode = buf.slice(bytecode_section.offset, bytecode_section.offset + bytecode_section.size);
 
