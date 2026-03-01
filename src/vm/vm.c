@@ -1,9 +1,5 @@
 #include "vm.h"
 #include "array.h"
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 char* read_file(const char* path, size_t* out_size) {
     FILE* file = fopen(path, "rb");
@@ -528,14 +524,14 @@ void init_bvm(BVM* bvm, const BVMProgram* program) {
         const char* prim_name = NULL;
 
         switch (primitive_of_proc(i)) {
-            case PRIM_ADD: prim_name = "+"; break;
-            case PRIM_SUB: prim_name = "-"; break;
-            case PRIM_MUL: prim_name = "*"; break;
-            case PRIM_DIV: prim_name = "/"; break;
-            case PRIM_CMP_EQ: prim_name = "="; break;
-            case PRIM_CMP_LT: prim_name = "<"; break;
-            case PRIM_CMP_GT: prim_name = ">"; break;
-            case PRIM_NOT: prim_name = "not"; break;
+            case PRIM_ADD: prim_name = "__add_2"; break;
+            case PRIM_SUB: prim_name = "__sub_2"; break;
+            case PRIM_MUL: prim_name = "__mul_2"; break;
+            case PRIM_DIV: prim_name = "__div_2"; break;
+            case PRIM_CMP_EQ: prim_name = "__eq_2"; break;
+            case PRIM_CMP_LT: prim_name = "__lt_2"; break;
+            case PRIM_CMP_GT: prim_name = "__gt_2"; break;
+            case PRIM_NOT: prim_name = "__not"; break;
         }
 
         int sym_id = symbol_id_of((BVMProgram*)bvm->program, prim_name);
@@ -625,6 +621,22 @@ static inline BVMConstant* operand_at(BVMInstruction* instr, uint8_t index) {
     return &instr->operand[index];
 }
 
+static const char* BVMValueToString(BVMValue val) {
+    char* out = (char*)malloc(64);
+
+    switch (val.tag) {
+        case TAG_BOOL: sprintf(out, "bool: %s", val.tag & 1 ? "#t" : "#f"); break;
+        case TAG_NIL: sprintf(out, "nil"); break;
+        case TAG_IDENT: sprintf(out, "ident"); break;
+        case TAG_SYM: sprintf(out, "sym"); break;
+        case TAG_INT: sprintf(out, "int: %li", val.as.i); break;
+        case TAG_FLOAT: sprintf(out, "float: %f", val.as.f); break;
+        case TAG_STR: sprintf(out, "str: %.*s", val.as.str.len, val.as.str.data); break;
+    }
+
+    return out;
+}
+
 void execute_bvm(BVM* bvm) {
     BVMInstruction* code_start = bvm->program->bytecode;
     BVMInstruction* pc         = code_start;
@@ -639,6 +651,9 @@ void execute_bvm(BVM* bvm) {
 
         switch (pc->opcode) {
             case OP_HALT: {
+                const char* result = BVMValueToString(pop_stack(&bvm->stack));
+                printf("halted: %s\n", result);
+                free((void*)result);
                 bvm->halted = 1;
                 break;
             }
@@ -769,6 +784,7 @@ void execute_bvm(BVM* bvm) {
                 uint32_t env_idx = alloc_env(bvm, bvm->current_env, proc->free_count);
                 BVMEnv*  env     = &bvm->envs[env_idx];
 
+                // TODO: Lookup env variables
                 for (uint16_t i = 0; i < proc->free_count; i++) {
                     uint32_t sym_id = proc->free_vars[i];
                     env->slots[i]   = bvm->envs[bvm->current_env].slots[sym_id];
