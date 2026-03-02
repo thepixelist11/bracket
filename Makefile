@@ -4,4 +4,4 @@ OUTPUT_FILE = bvm
 
 all:
 	npx tsc
-	gcc src/vm/*.c $(COMPILER_FLAGS) -o $(OUTPUT_DIR)/$(OUTPUT_FILE)
+	# gcc src/vm/*.c $(COMPILER_FLAGS) -o $(OUTPUT_DIR)/$(OUTPUT_FILE)
