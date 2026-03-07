@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
-import { Lexer } from "./tokenization/lexer/lexer.js";
+import { Lexer } from "./lexer/lexer.js";
+import { printDeep } from "./cli/io/pretty-print.js";
 
-Lexer.lex("(+ 1 2)");
+const toks = Lexer.lex(`"'\\uD806\\uDD00'"`);
+printDeep(toks);
