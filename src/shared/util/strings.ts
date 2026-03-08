@@ -40,6 +40,14 @@ export function octalValue(ch: string) {
     return -1;
 }
 
+export function decimalValue(ch: string) {
+    const code = ch.charCodeAt(0);
+
+    if (code >= 48 && code <= 55) return code - 50;
+
+    return -1;
+}
+
 export function isHex(str: string) {
     for (const ch of str) {
         if (hexValue(ch) === -1)
@@ -57,3 +65,51 @@ export function isOctal(str: string) {
 
     return true;
 }
+
+export function isDecimal(str: string) {
+    for (const ch of str) {
+        if (decimalValue(ch) === -1)
+            return false;
+    }
+
+    return true;
+}
+
+export function isByteChar(ch: string) {
+    const code = ch.charCodeAt(0);
+    return 0 <= code && code <= 255;
+}
+
+export function isWhitespace(ch: string) {
+    const code = ch.charCodeAt(0);
+
+    if (code === 9) return true; // horizontal tab
+    if (code === 10) return true; // linefeed
+    if (code === 11) return true; // vertical tab
+    if (code === 12) return true; // formfeed
+    if (code === 13) return true; // carriage return
+    if (code === 32) return true; // space
+
+    return false;
+}
+
+export function isSymbolDelimiter(ch: string) {
+    if (
+        ch === undefined ||
+        ch === "(" ||
+        ch === ")" ||
+        ch === "[" ||
+        ch === "]" ||
+        ch === "{" ||
+        ch === "}" ||
+        ch === '"' ||
+        ch === "," ||
+        ch === "'" ||
+        ch === "`" ||
+        ch === ";" ||
+        isWhitespace(ch)
+    ) return true;
+
+    return false;
+}
+

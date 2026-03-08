@@ -124,7 +124,7 @@
  *                        Literal: <none>
  */
 
-import { ErrorKind } from "../shared/errors.js";
+import { assertNever, ErrorKind } from "../shared/errors.js";
 import { Position } from "../shared/data-structures/stream.js";
 
 interface ErrorTokenLiteral {
@@ -201,9 +201,9 @@ export type TokenMetadata = Partial<{
 
 export class Token<T extends TokenKind = TokenKind> {
     constructor(
-        private _kind: T,
-        private _literal: TokenKindLiteralMap<T>,
-        private _meta: TokenMetadata = {},
+        private readonly _kind: T,
+        private readonly _literal: TokenKindLiteralMap<T>,
+        private readonly _meta: TokenMetadata = {},
     ) { }
 
     get kind() { return this._kind; }
@@ -211,7 +211,17 @@ export class Token<T extends TokenKind = TokenKind> {
     get meta() { return this._meta; }
 
     public toString() {
-        throw new Error("todo");
+        switch (this.kind) {
+            case TokenKind.Error:
+                return `TokenError(${(this.literal as ErrorTokenLiteral).kind ?? "<generic_error>"}:${(this.literal as ErrorTokenLiteral).msg ?? "<empty>"})`;
+
+            case TokenKind.LParen:
+            case TokenKind.RParen:
+                return `Token${TokenKind[this.kind]}(${ParenKind[this.literal as ParenKind] ?? ""})`;
+
+            default:
+                return `Token${TokenKind[this.kind]}(${this.literal ?? ""})`;
+        }
     }
 }
 
@@ -224,7 +234,7 @@ export function TokenQuasiquote(meta?: TokenMetadata) { return new Token(TokenKi
 export function TokenUnquote(meta?: TokenMetadata) { return new Token(TokenKind.Unquote, undefined, meta); }
 export function TokenUnquoteSplicing(meta?: TokenMetadata) { return new Token(TokenKind.UnquoteSplicing, undefined, meta); }
 export function TokenBool(literal: boolean, meta?: TokenMetadata) { return new Token(TokenKind.Bool, literal, meta); }
-export function TokenChar(literal: string & { length: 1 }, meta?: TokenMetadata) { return new Token(TokenKind.Char, literal, meta); }
+export function TokenChar(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Char, literal, meta); }
 export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenKind.EOF, undefined, meta); }
 export function TokenError(literal: ErrorTokenLiteral, meta?: TokenMetadata) { return new Token(TokenKind.Error, literal, meta); }
 export function TokenLParen(kind: ParenKind, meta?: TokenMetadata) { return new Token(TokenKind.LParen, kind, meta); }
@@ -234,14 +244,14 @@ export function TokenEllipsis(meta?: TokenMetadata) { return new Token(TokenKind
 
 /*        Token Factory Exhaustiveness Checking       */
 
-type Missing<K extends string> = `Missing expected export: ${K}`;
-type __TokenKindNames = keyof typeof TokenKind;
+type __ExpandMissing<T> = T extends any ? ["Missing token factory:", T] : never;
+type __TokenKindNames = Extract<keyof typeof TokenKind, string>;
 type __ExpectedFactoryNames = `Token${__TokenKindNames}`;
 type __ModuleExports = typeof import("./tokens.ts");
 type __ActualFactoryNames = Extract<keyof __ModuleExports, `Token${string}`>;
 type __MissingFactories = Exclude<__ExpectedFactoryNames, __ActualFactoryNames>;
 type __AssertAllFactoriesExist =
-    __MissingFactories extends never
+    [__MissingFactories] extends [never]
     ? true
-    : Missing<__MissingFactories>;
+    : __ExpandMissing<__MissingFactories>;
 const __assertTokenFactories: __AssertAllFactoriesExist = true;

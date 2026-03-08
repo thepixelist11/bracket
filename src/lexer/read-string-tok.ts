@@ -4,7 +4,6 @@ import { readEscape } from "./read-escape.js";
 
 export function readStringTok(l: Lexer) {
     const pos = l.position;
-    console.log(`found string at ${pos.idx} (${pos.row}/${pos.col})`);
 
     l.expect(ch => ch === '"', "read string failed; expected an opening \"");
 

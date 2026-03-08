@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { Lexer } from "./lexer/lexer.js";
-import { printDeep } from "./cli/io/pretty-print.js";
 
-const toks = Lexer.lex(`"'\\uD806\\uDD00'"`);
-printDeep(toks);
+const toks = Lexer.lex(`(define @,a 1)`);
+
+for (const tok of toks) {
+    console.log(tok.toString());
+}
