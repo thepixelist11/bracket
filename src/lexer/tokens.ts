@@ -15,9 +15,6 @@
  * The following is a list of all TokenKinds in Bracket, their `literal` types,
  * as well as any additional implementation or usage details.
  *
- * Num ---------------- Numeric tokens
- *                        Literal: <number>
- *
  * Str ---------------- String literal tokens
  *                        Literal: <string>
  *
@@ -27,13 +24,18 @@
  *                        Note that ByteStr tokens will be normalized to a
  *                        `bytes` form in the reader phase.
  *
- * Sym ---------------- Symbol tokens
- *                        Literal: <string> - Interned symbol name
+ * Seq ---------------- Delimited Sequence Token
+ *                        Literal: <string>
  *
- *                        Symbol tokens represent a sequence of characters
- *                        constituting an identifier in source code. The
- *                        literal field contains the normalized name which is
- *                        used in the intern table.
+ *                        Sequence tokens represent a sequence of characters
+ *                        delimited by the following:
+ *
+ *                        ( ) [ ] { } " ' , ` ;
+ *                        Whitespace,
+ *                        BOM Character (\uFEFF)
+ *
+ *                        These sequences are later converted to numbers and
+ *                        symbols by the Reader.
  *
  * Quote -------------- Quote token - "'"
  *                        Literal: <none>
@@ -124,8 +126,9 @@
  *                        Literal: <none>
  */
 
-import { assertNever, ErrorKind } from "../shared/errors.js";
+import { ErrorKind } from "../shared/errors.js";
 import { Position } from "../shared/data-structures/stream.js";
+import { Err, Ok, Result } from "../shared/data-structures/result.js";
 
 interface ErrorTokenLiteral {
     msg: string;
@@ -138,30 +141,31 @@ export enum ParenKind {
     Brace,
 };
 
-export function getParenKind(ch: string) {
+export function getParenKind(ch: string): Result<ParenKind, Error> {
     switch (ch) {
         case "(":
         case ")":
-            return ParenKind.Paren;
+            return Ok(ParenKind.Paren);
 
         case "[":
         case "]":
-            return ParenKind.Bracket;
+            return Ok(ParenKind.Bracket);
 
         case "{":
         case "}":
-            return ParenKind.Brace;
+            return Ok(ParenKind.Brace);
 
         default:
-            throw new Error(`getParenKind failed; invalid paren type: '${ch}'`);
+            return Err(
+                new Error(`getParenKind failed; invalid paren type: '${ch}'`)
+            );
     }
 }
 
 export enum TokenKind {
-    Num,
     Str,
     ByteStr,
-    Sym,
+    Seq,
     Quote,
     Quasiquote,
     Unquote,
@@ -177,10 +181,9 @@ export enum TokenKind {
 };
 
 type TokenKindLiteralMap<T extends TokenKind> =
-    T extends TokenKind.Num ? number :
     T extends TokenKind.Str ? string :
     T extends TokenKind.ByteStr ? string :
-    T extends TokenKind.Sym ? string :
+    T extends TokenKind.Seq ? string :
     T extends TokenKind.Quote ? undefined :
     T extends TokenKind.Quasiquote ? undefined :
     T extends TokenKind.Unquote ? undefined :
@@ -203,7 +206,7 @@ export class Token<T extends TokenKind = TokenKind> {
     constructor(
         private readonly _kind: T,
         private readonly _literal: TokenKindLiteralMap<T>,
-        private readonly _meta: TokenMetadata = {},
+        private readonly _meta: Readonly<TokenMetadata> = {},
     ) { }
 
     get kind() { return this._kind; }
@@ -225,10 +228,9 @@ export class Token<T extends TokenKind = TokenKind> {
     }
 }
 
-export function TokenNum(literal: number, meta?: TokenMetadata) { return new Token(TokenKind.Num, literal, meta); }
 export function TokenStr(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Str, literal, meta); }
 export function TokenByteStr(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.ByteStr, literal, meta); }
-export function TokenSym(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Sym, literal, meta); }
+export function TokenSeq(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Seq, literal, meta); }
 export function TokenQuote(meta?: TokenMetadata) { return new Token(TokenKind.Quote, undefined, meta); }
 export function TokenQuasiquote(meta?: TokenMetadata) { return new Token(TokenKind.Quasiquote, undefined, meta); }
 export function TokenUnquote(meta?: TokenMetadata) { return new Token(TokenKind.Unquote, undefined, meta); }

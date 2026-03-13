@@ -1,10 +1,11 @@
 import { PositionalStream, Stream } from "../shared/data-structures/stream.js";
-import { getParenKind, Token, TokenBool, TokenDot, TokenEllipsis, TokenEOF, TokenError, TokenLParen, TokenMetadata, TokenQuasiquote, TokenQuote, TokenRParen, TokenUnquote, TokenUnquoteSplicing } from "./tokens.js";
+import { getParenKind, Token, TokenBool, TokenDot, TokenEllipsis, TokenEOF, TokenLParen, TokenMetadata, TokenQuasiquote, TokenQuote, TokenRParen, TokenUnquote, TokenUnquoteSplicing } from "./tokens.js";
 import { readStringTok } from "./read-string-tok.js";
 import { readByteStringTok } from "./read-byte-string-tok.js";
-import { isSymbolDelimiter, isWhitespace } from "../shared/util/strings.js";
-import { ErrorKind } from "../shared/errors.js";
-import { readSymbolTok } from "./read-symbol-tok.js";
+import { isSequenceDelimiter, isWhitespace } from "../shared/util/strings.js";
+import { readSequenceTok } from "./read-sequence-tok.js";
+import { LexerError } from "../shared/errors.js";
+import { Ok, Result } from "../shared/data-structures/result.js";
 
 export class Lexer {
     private _src_stream: PositionalStream;
@@ -28,31 +29,33 @@ export class Lexer {
     public peekWhile(pred: (item: string) => boolean) { return this.src.peekWhile(pred) }
     public peekWhileN(pred: (item: string) => boolean, n: number) { return this.src.peekWhileN(pred, n) }
     public consumeIf(pred: (item: string) => boolean) { return this.src.consumeIf(pred) }
+    public consumeIfThen(pred: (item: string) => boolean, cb: (s: Stream<string>) => void) { return this.src.consumeIfThen(pred, cb) }
     public expect(pred: (item: string) => boolean, msg?: string) { return this.src.expect(pred, msg) }
     public expectN(pred: (item: string[]) => boolean, n: number, msg?: string) { return this.src.expectN(pred, n, msg) }
     public mark() { return this.src.mark() }
     public unmark(mark: number) { return this.src.unmark(mark) }
     public restore(mark: number) { return this.src.restore(mark) }
 
-    static lex(src: string): Stream<Token> {
+    static lex(src: string): Result<Stream<Token>, LexerError> {
         const toks: Token[] = [];
         const l = new Lexer(src);
 
         while (!l.src.is_done) {
-            toks.push(l.readNextToken())
+            const next_tok = l.readNextToken();
+            toks.push(next_tok.val());
             l.skipWhitespace();
         }
 
         toks.push(TokenEOF());
 
-        return new Stream(toks);
+        return Ok(new Stream(toks));
     }
 
     public skipWhitespace() {
         this.src.readWhile(isWhitespace);
     }
 
-    private readNextToken() {
+    private readNextToken(): Result<Token, LexerError> {
         this.skipWhitespace();
 
         const [c0, c1, c2, c3] = this.src.peekN(4);
@@ -61,50 +64,76 @@ export class Lexer {
         switch (c0) {
             case "(":
             case "[":
-            case "{":
+            case "{": {
                 this.next();
-                return TokenLParen(getParenKind(c0), meta);
+                const type = getParenKind(c0);
+                if (type.is_err()) return type.map_err(x => new LexerError(x.message));
+
+                return Ok(
+                    TokenLParen(type.val(), meta)
+                );
+            }
 
             case ")":
             case "]":
-            case "}":
+            case "}": {
                 this.next();
-                return TokenRParen(getParenKind(c0), meta);
+                const type = getParenKind(c0);
+                if (type.is_err()) return type.map_err(x => new LexerError(x.message));
+
+                return Ok(
+                    TokenRParen(type.val(), meta)
+                );
+            }
 
             case "'":
                 this.next();
-                return TokenQuote(meta);
+                return Ok(
+                    TokenQuote(meta)
+                );
 
             case "`":
                 this.next();
-                return TokenQuasiquote(meta);
+                return Ok(
+                    TokenQuasiquote(meta)
+                );
 
             case ",":
                 this.next();
-                return TokenUnquote(meta);
+                return Ok(
+                    TokenUnquote(meta)
+                );
 
             case "@":
                 if (c1 === ",") {
                     this.nextN(2);
-                    return TokenUnquoteSplicing(meta);
+                    return Ok(
+                        TokenUnquoteSplicing(meta)
+                    );
                 }
 
             case '.': {
-                if (c1 === "." && c2 === "." && isSymbolDelimiter(c3)) {
+                if (c1 === "." && c2 === "." && isSequenceDelimiter(c3)) {
                     this.nextN(3);
-                    return TokenEllipsis(meta);
+                    return Ok(
+                        TokenEllipsis(meta)
+                    );
                 }
 
-                if (isSymbolDelimiter(c1)) {
+                if (isSequenceDelimiter(c1)) {
                     this.next();
-                    return TokenDot(meta);
+                    return Ok(
+                        TokenDot(meta)
+                    );
                 }
 
-                return readSymbolTok(this);
+                return readSequenceTok(this);
             }
 
             case '"':
-                return readStringTok(this);
+                return Ok(
+                    readStringTok(this)
+                );
 
             case '#': {
                 switch (c1) {
@@ -114,24 +143,21 @@ export class Lexer {
                     case 't':
                     case 'T':
                         this.next();
-                        return TokenBool(false, meta);
+                        return Ok(
+                            TokenBool(false, meta)
+                        );
 
                     case 'f':
                     case 'F':
                         this.next();
-                        return TokenBool(false, meta);
-
-                    default:
-                        this.next();
-                        return TokenError({
-                            msg: "unexpected '#'",
-                            kind: ErrorKind.UnexpectedSyntax
-                        }, meta);
+                        return Ok(
+                            TokenBool(false, meta)
+                        );
                 }
             }
 
             default:
-                return readSymbolTok(this);
+                return readSequenceTok(this);
         }
     }
 }

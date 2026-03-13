@@ -34,59 +34,66 @@
  * https://docs.racket-lang.org/reference/reader.html#(part._parse-string)
  */
 
+import { Err, Ok, Result } from "../shared/data-structures/result.js";
 import { LexerError } from "../shared/errors.js";
 import { convertSeqToString, hexValue, isHex, isOctal } from "../shared/util/strings.js";
 import { Lexer } from "./lexer.js";
 
-export function readOctalEscape(l: Lexer) {
+export function readOctalEscape(l: Lexer): Result<string, LexerError> {
     const octal_str = l.readWhileN(isOctal, 3).join("");
 
     const octal = parseInt(octal_str, 8);
 
     if (Number.isNaN(octal)) {
-        throw new LexerError(
+        return Err(new LexerError(
             `failed to read octal sequence; malformed octal value: '${octal_str}'`
-        );
+        ));
     }
 
     if (octal < 0 || 255 < octal) {
-        throw new LexerError(
+        return Err(new LexerError(
             `invalid octal sequence; octal value out of range [0, 255], got (${octal})`
-        );
+        ));
     }
 
     const ch = String.fromCharCode(octal);
-    return convertSeqToString(ch);
+    return Ok(convertSeqToString(ch));
 }
 
-export function readHexEscape(l: Lexer) {
-    l.expect(
+export function readHexEscape(l: Lexer): Result<string, LexerError> {
+    const res = l.expect(
         ch => ch === "x",
         `expected hex sequence to begin with an 'x', got '${String(l.peek())}'`
     );
 
+    if (res.is_err())
+        return res.map_err(x => new LexerError(x.message));
+
     const hex_str = l.readWhileN(isHex, 2).join("");
 
     if (hex_str.length === 0)
-        throw new LexerError("Invalid escape sequence: '\\x'");
+        return Err(new LexerError("Invalid escape sequence: '\\x'"));
 
     const hex = parseInt(hex_str, 16);
 
     if (Number.isNaN(hex)) {
-        throw new LexerError(
+        return Err(new LexerError(
             `failed to read hex sequence; malformed hex value: '${hex_str}'`
-        );
+        ));
     }
 
     const ch = String.fromCharCode(hex);
-    return convertSeqToString(ch);
+    return Ok(convertSeqToString(ch));
 }
 
-export function readUnicodeEscape4(l: Lexer) {
-    l.expect(
+export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
+    const res = l.expect(
         ch => ch === "u",
         `expected unicode (4) sequence to begin with a 'u', got '${String(l.peek())}'`
     );
+
+    if (res.is_err())
+        return res.map_err(x => new LexerError(x.message));
 
     let result = "";
 
@@ -96,20 +103,20 @@ export function readUnicodeEscape4(l: Lexer) {
     ).join("");
 
     if (unicode_str.length === 0)
-        throw new LexerError("Invalid escape sequence: '\\u'");
+        return Err(new LexerError("Invalid escape sequence: '\\u'"));
 
     const unicode = parseInt(unicode_str, 16);
 
     if (Number.isNaN(unicode)) {
-        throw new LexerError(
+        return Err(new LexerError(
             `failed to read unicode sequence; malformed unicode value: '${unicode_str}'`
-        );
+        ));
     }
 
     if (0xDC00 <= unicode && unicode <= 0xDFFF) {
-        throw new LexerError(
+        return Err(new LexerError(
             `failed to read unicode sequence; unexpected unpaired surrogate: '${unicode_str}; is the ordering of surrogate pairs incorrect?'`
-        );
+        ));
     }
 
     if (0xD800 <= unicode && unicode <= 0xDBFF) {
@@ -124,24 +131,25 @@ export function readUnicodeEscape4(l: Lexer) {
             !isHex(surrogate.slice(2))
         ) {
             l.restore(pre_surrogate);
-            throw new LexerError(
+            return Err(new LexerError(
                 `failed to read unicode sequence; incomplete surrogate pair: '${unicode_str}'`
-            );
+            ));
         }
 
         if (Number.isNaN(low)) {
-            throw new LexerError(
+            return Err(new LexerError(
                 `failed to read unicode sequence (second in UTF-16 surrogate pair); malformed unicode value: '${surrogate}'`
-            );
+            ));
         }
 
         if (
             low < 0xDC00 || 0xDFFF < low
         ) {
-            throw new LexerError(
+            return Err(new LexerError(
                 `failed to read unicode sequence; expected valid surrogate sequence in [0xDC00, 0xDFFF], got '${surrogate}'`
-            );
+            ));
         }
+
         const code =
             (unicode - 0xD800) * 0x400 +
             (low - 0xDC00) +
@@ -154,40 +162,46 @@ export function readUnicodeEscape4(l: Lexer) {
         result = String.fromCodePoint(unicode);
     }
 
-    return convertSeqToString(result);
+    return Ok(convertSeqToString(result));
 }
 
-export function readUnicodeEscape8(l: Lexer) {
-    l.expect(
+export function readUnicodeEscape8(l: Lexer): Result<string, LexerError> {
+    const res = l.expect(
         ch => ch === "U",
         `expected hex sequence to begin with an 'U', got '${String(l.peek())}'`
     );
 
+    if (res.is_err())
+        return res.map_err(x => new LexerError(x.message));
+
     const unicode_str = l.readWhileN(isHex, 8).join("");
 
     if (unicode_str.length === 0)
-        throw new LexerError("Invalid escape sequence: '\\U'");
+        return Err(new LexerError("Invalid escape sequence: '\\U'"));
 
     const unicode = parseInt(unicode_str, 16);
 
     if (Number.isNaN(unicode)) {
-        throw new LexerError(
+        return Err(new LexerError(
             `failed to read hex sequence; malformed hex value: '${unicode_str}'`
-        );
+        ));
     }
 
     const ch = String.fromCodePoint(unicode);
-    return convertSeqToString(ch);
+    return Ok(convertSeqToString(ch));
 }
 
-export function readEscape(l: Lexer) {
-    l.expect(
+export function readEscape(l: Lexer): Result<string, LexerError> {
+    const res = l.expect(
         ch => ch === "\\",
         `expected escape sequence to start with a '\\', got '${String(l.peek())}'`
     );
 
+    if (res.is_err())
+        return res.map_err(x => new LexerError(x.message));
+
     if (l.is_done) {
-        throw new LexerError("expected escape sequence; found EOF");
+        return Err(new LexerError("expected escape sequence; found EOF"));
     }
 
     let ch = l.peek() as string;
@@ -202,22 +216,22 @@ export function readEscape(l: Lexer) {
         return readUnicodeEscape8(l);
     } else if (ch === "\n") {
         l.next();
-        return "";
+        return Ok("");
     } else {
         switch (ch) {
-            case "a": l.next(); return "\a";
-            case "b": l.next(); return "\b";
-            case "t": l.next(); return "\t";
-            case "n": l.next(); return "\n";
-            case "v": l.next(); return "\v";
-            case "f": l.next(); return "\f";
-            case "r": l.next(); return "\r";
-            case "e": l.next(); return "\e";
-            case '"': l.next(); return '"';
-            case "'": l.next(); return "'";
-            case "\\": l.next(); return "\\";
+            case "a": l.next(); ch = "\a";
+            case "b": l.next(); ch = "\b";
+            case "t": l.next(); ch = "\t";
+            case "n": l.next(); ch = "\n";
+            case "v": l.next(); ch = "\v";
+            case "f": l.next(); ch = "\f";
+            case "r": l.next(); ch = "\r";
+            case "e": l.next(); ch = "\e";
+            case '"': l.next(); ch = '"';
+            case "'": l.next(); ch = "'";
+            case "\\": l.next(); ch = "\\";
         }
     }
 
-    return ch;
+    return Ok(ch);
 }

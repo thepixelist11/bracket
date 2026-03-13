@@ -15,7 +15,7 @@
  * peek() and next() return Stream.Done when the stream is exhausted and will
  *                   not advance beyond size. (that is, idx == size is the
  *                   exhausted position).
- * expect() and expectN() throws if the stream is exhausted or a predicate
+ * expect() and expectN() errors if the stream is exhausted or a predicate
  * fails.
  *
  * Stream.Done is a unique sentinel value used to mark the end of a stream.
@@ -25,7 +25,7 @@
  * mark() returns the current cursor position as a numeric index and registers
  *        the index in a set of all marked indices. An index must be marked to
  *        be returned to.
- * restore(mark) resets the cursor to the provided index. Throws if the index
+ * restore(mark) resets the cursor to the provided index. Errors if the index
  *               was not marked.
  * unmark(mark) deletes a stored mark, returning true if the mark existed and
  *              was removed.
@@ -52,11 +52,14 @@
  *          array length is min(n, size - idx). This array will not include
  *          Stream.Done.
  * consumeIf(pred) consumes the current element only if pred(element) holds.
+ * consumeIfThen(pred, cb) consumes the current element only if pred(element)
+ *                         holds, then calls the callback with the current
+ *                         stream as a parameter.
  * expect(pred, msg?) consumes the current element if the stream is not
- *                    exhausted and pred(element) holds, otherwise throws with
+ *                    exhausted and pred(element) holds, otherwise errors with
  *                    an optional message and does not consume.
  * expect(pred, n, msg?) consumes the current element if the stream is not
- *                       exhausted and pred(element) holds, otherwise throws
+ *                       exhausted and pred(element) holds, otherwise errors
  *                       with an optional message and does not consume. `n`
  *                       indicates the number of elements to pass to the
  *                       predicate and to consume if the predicate is
@@ -76,6 +79,10 @@
  * from the current position to the end, automatically returning to the
  * original position upon completion.
  */
+
+import { StreamError } from "../errors.js";
+import { Err, Ok, Result } from "./result.js";
+
 export class Stream<T> {
     protected readonly _data: T[];
     protected _idx: number;
@@ -188,22 +195,40 @@ export class Stream<T> {
         return pred(item as T) ? this.next() as T : undefined;
     }
 
-    public expect(pred: (item: T) => boolean, msg?: string): T {
+    public consumeIfThen(pred: (item: T) => boolean, cb: (stream: Stream<T>) => void): void {
         const item = this.peek();
-        if (item === Stream.Done)
-            throw new Error(`expect failed at ${this.idx}; ${msg ?? "stream ended"} `);
-        if (!pred(item as T))
-            throw new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"} `);
-        return this.next() as T;
+        if (item === Stream.Done) return;
+
+        if (pred(item as T)) {
+            this.next();
+            cb(this);
+        }
     }
 
-    public expectN(pred: (item: T[]) => boolean, n: number, msg?: string): T {
+    public expect(pred: (item: T) => boolean, msg?: string): Result<T, StreamError> {
+        const item = this.peek();
+        if (item === Stream.Done)
+            return Err(
+                new StreamError(`expect failed at ${this.idx}; ${msg ?? "stream ended"}`)
+            );
+        if (!pred(item as T))
+            return Err(
+                new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"}`)
+            );
+        return Ok(this.next() as T);
+    }
+
+    public expectN(pred: (item: T[]) => boolean, n: number, msg?: string): Result<T, StreamError> {
         const item = this.peekN(n);
         if (item.length === 0)
-            throw new Error(`expect failed at ${this.idx}; ${msg ?? "stream ended"} `);
+            return Err(
+                new Error(`expect failed at ${this.idx}; ${msg ?? "stream ended"}`)
+            );
         if (!pred(item as T[]))
-            throw new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"} `);
-        return this.nextN(n) as T;
+            return Err(
+                new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"}`)
+            );
+        return Ok(this.nextN(n) as T);
     }
 
     public mark(): number {
@@ -215,11 +240,13 @@ export class Stream<T> {
         return this._mark_set.delete(mark);
     }
 
-    public restore(mark: number): void {
+    public restore(mark: number): Result<undefined, StreamError> {
         if (!this._mark_set.has(mark))
-            throw new Error(`restore failed; index ${mark} was not marked`);
+            return Err(new Error(`restore failed; index ${mark} was not marked`));
 
         this._idx = mark;
+
+        return Ok();
     }
 
     static Done = Symbol("StreamDone");
@@ -277,13 +304,15 @@ export class PositionalStream extends Stream<string> {
         return super.unmark(mark);
     }
 
-    public restore(mark: number): void {
+    public restore(mark: number): Result<undefined, StreamError> {
         const mark_pos = this._marks.get(mark);
         if (!mark_pos)
-            throw new Error(`restore failed; mark not set: ${mark} `);
+            return Err(new Error(`restore failed; mark not set: ${mark}`));
 
         this._idx = mark;
         this._position = mark_pos;
+
+        return Ok();
     }
 
     public updatePosition(ch: string) {

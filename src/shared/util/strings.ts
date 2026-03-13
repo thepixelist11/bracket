@@ -66,7 +66,7 @@ export function isOctal(str: string) {
     return true;
 }
 
-export function isDecimal(str: string) {
+export function isDecimalInt(str: string) {
     for (const ch of str) {
         if (decimalValue(ch) === -1)
             return false;
@@ -93,7 +93,7 @@ export function isWhitespace(ch: string) {
     return false;
 }
 
-export function isSymbolDelimiter(ch: string) {
+export function isSequenceDelimiter(ch: string) {
     if (
         ch === undefined ||
         ch === "(" ||
@@ -107,6 +107,7 @@ export function isSymbolDelimiter(ch: string) {
         ch === "'" ||
         ch === "`" ||
         ch === ";" ||
+        ch === "\uFEFF" ||
         isWhitespace(ch)
     ) return true;
 
