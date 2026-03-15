@@ -1,11 +1,25 @@
 import { PositionalStream, Stream } from "../shared/data-structures/stream.js";
-import { getParenKind, Token, TokenBool, TokenDot, TokenEllipsis, TokenEOF, TokenLParen, TokenMetadata, TokenQuasiquote, TokenQuote, TokenRParen, TokenUnquote, TokenUnquoteSplicing } from "./tokens.js";
 import { readStringTok } from "./read-string-tok.js";
 import { readByteStringTok } from "./read-byte-string-tok.js";
 import { isSequenceDelimiter, isWhitespace } from "../shared/util/strings.js";
 import { readSequenceTok } from "./read-sequence-tok.js";
 import { LexerError } from "../shared/errors.js";
 import { Ok, Result } from "../shared/data-structures/result.js";
+import {
+    getParenKind,
+    Token,
+    TokenBool,
+    TokenDot,
+    TokenEllipsis,
+    TokenEOF,
+    TokenLParen,
+    TokenMetadata,
+    TokenQuasiquote,
+    TokenQuote,
+    TokenRParen,
+    TokenUnquote,
+    TokenUnquoteSplicing
+} from "./tokens.js";
 
 export class Lexer {
     private _src_stream: PositionalStream;
@@ -67,7 +81,8 @@ export class Lexer {
             case "{": {
                 this.next();
                 const type = getParenKind(c0);
-                if (type.is_err()) return type.map_err(x => new LexerError(x.message));
+                if (type.is_err())
+                    return type.map_err(x => new LexerError(x.message));
 
                 return Ok(
                     TokenLParen(type.val(), meta)
@@ -79,7 +94,8 @@ export class Lexer {
             case "}": {
                 this.next();
                 const type = getParenKind(c0);
-                if (type.is_err()) return type.map_err(x => new LexerError(x.message));
+                if (type.is_err())
+                    return type.map_err(x => new LexerError(x.message));
 
                 return Ok(
                     TokenRParen(type.val(), meta)

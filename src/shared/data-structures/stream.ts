@@ -195,7 +195,10 @@ export class Stream<T> {
         return pred(item as T) ? this.next() as T : undefined;
     }
 
-    public consumeIfThen(pred: (item: T) => boolean, cb: (stream: Stream<T>) => void): void {
+    public consumeIfThen(
+        pred: (item: T) => boolean,
+        cb: (stream: Stream<T>) => void
+    ): void {
         const item = this.peek();
         if (item === Stream.Done) return;
 
@@ -205,7 +208,10 @@ export class Stream<T> {
         }
     }
 
-    public expect(pred: (item: T) => boolean, msg?: string): Result<T, StreamError> {
+    public expect(
+        pred: (item: T) => boolean,
+        msg?: string
+    ): Result<T, StreamError> {
         const item = this.peek();
         if (item === Stream.Done)
             return Err(
@@ -218,7 +224,11 @@ export class Stream<T> {
         return Ok(this.next() as T);
     }
 
-    public expectN(pred: (item: T[]) => boolean, n: number, msg?: string): Result<T, StreamError> {
+    public expectN(
+        pred: (item: T[]) => boolean,
+        n: number,
+        msg?: string
+    ): Result<T, StreamError> {
         const item = this.peekN(n);
         if (item.length === 0)
             return Err(

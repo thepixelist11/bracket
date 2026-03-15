@@ -40,7 +40,10 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
 
         if (!isByteChar(ch))
             return Err(
-                new Error(`read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) is out of range of byte string [0, 255]`)
+                new Error(
+                    `read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) ` +
+                    `is out of range of byte string [0, 255]`
+                )
             );
 
         literal += ch;

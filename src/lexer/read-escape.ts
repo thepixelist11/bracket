@@ -36,8 +36,13 @@
 
 import { Err, Ok, Result } from "../shared/data-structures/result.js";
 import { LexerError } from "../shared/errors.js";
-import { convertSeqToString, hexValue, isHex, isOctal } from "../shared/util/strings.js";
 import { Lexer } from "./lexer.js";
+import {
+    convertSeqToString,
+    hexValue,
+    isHex,
+    isOctal
+} from "../shared/util/strings.js";
 
 export function readOctalEscape(l: Lexer): Result<string, LexerError> {
     const octal_str = l.readWhileN(isOctal, 3).join("");
@@ -115,7 +120,8 @@ export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
 
     if (0xDC00 <= unicode && unicode <= 0xDFFF) {
         return Err(new LexerError(
-            `failed to read unicode sequence; unexpected unpaired surrogate: '${unicode_str}; is the ordering of surrogate pairs incorrect?'`
+            `failed to read unicode sequence; unexpected unpaired surrogate: '${unicode_str};` +
+            `is the ordering of surrogate pairs incorrect?'`
         ));
     }
 
@@ -138,7 +144,8 @@ export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
 
         if (Number.isNaN(low)) {
             return Err(new LexerError(
-                `failed to read unicode sequence (second in UTF-16 surrogate pair); malformed unicode value: '${surrogate}'`
+                `failed to read unicode sequence (second in UTF-16 surrogate pair); ` +
+                `malformed unicode value: '${surrogate}'`
             ));
         }
 
@@ -146,7 +153,8 @@ export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
             low < 0xDC00 || 0xDFFF < low
         ) {
             return Err(new LexerError(
-                `failed to read unicode sequence; expected valid surrogate sequence in [0xDC00, 0xDFFF], got '${surrogate}'`
+                `failed to read unicode sequence; expected valid surrogate sequence in ` +
+                `[0xDC00, 0xDFFF], got '${surrogate}'`
             ));
         }
 

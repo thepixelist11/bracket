@@ -250,15 +250,24 @@ export class Token<T extends TokenKind = TokenKind> {
 
     public toString() {
         switch (this.kind) {
-            case TokenKind.Error:
-                return `TokenError(${(this.literal as ErrorTokenLiteral).kind ?? "<generic_error>"}:${(this.literal as ErrorTokenLiteral).msg ?? "<empty>"})`;
+            case TokenKind.Error: {
+                const kind_str = (this.literal as ErrorTokenLiteral).kind ?? "<generic_error>";
+                const msg_str = (this.literal as ErrorTokenLiteral).msg ?? "<empty>";
+                return `TokenError(${kind_str}:${msg_str})`;
+            }
 
             case TokenKind.LParen:
-            case TokenKind.RParen:
-                return `Token${TokenKind[this.kind]}(${ParenKind[this.literal as ParenKind] ?? ""})`;
+            case TokenKind.RParen: {
+                const kind_str = TokenKind[this.kind];
+                const lit_str = ParenKind[this.literal as ParenKind] ?? "";
+                return `Token${kind_str}(${lit_str})`;
+            }
 
-            default:
-                return `Token${TokenKind[this.kind]}(${this.literal ?? ""})`;
+            default: {
+                const kind_str = TokenKind[this.kind];
+                const lit_str = this.literal ?? "";
+                return `Token${kind_str}(${lit_str})`;
+            }
         }
     }
 }

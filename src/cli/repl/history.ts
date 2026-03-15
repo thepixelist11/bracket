@@ -7,7 +7,8 @@ export class TerminalHistory {
     private index = -1;
     private draft: string[] | null = null;
 
-    public loadFile(file_path: string,
+    public loadFile(
+        file_path: string,
         size: number,
         filter_lines: ((line: string) => boolean) = () => true
     ): boolean {
@@ -41,7 +42,7 @@ export class TerminalHistory {
         return true;
     }
 
-    public append(current_buffer: string[]): void {
+    public append(current_buffer: readonly string[]): void {
         if (current_buffer.length === 0) return;
         if (eq(this.hist[0], current_buffer)) return;
 
@@ -49,7 +50,7 @@ export class TerminalHistory {
         this.resetNavigation();
     }
 
-    public appendFile(file_path: string, buffer: string[]): boolean {
+    public appendFile(file_path: string, buffer: readonly string[]): boolean {
         if (
             file_path === "" ||
             buffer.length === 0
@@ -68,7 +69,7 @@ export class TerminalHistory {
         return true;
     }
 
-    public previous(current_buffer: string[]): string[] | null {
+    public previous(current_buffer: readonly string[]): string[] | null {
         if (this.hist.length === 0) return null;
 
         if (this.index === -1) {
@@ -99,7 +100,7 @@ export class TerminalHistory {
         this.temp_hist_buffers.clear();
     }
 
-    public updateCurrent(buffer: string[]): void {
+    public updateCurrent(buffer: readonly string[]): void {
         if (this.index >= 0)
             this.temp_hist_buffers.set(this.index, [...buffer]);
     }
