@@ -135,6 +135,7 @@ export class Lexer {
                     readStringTok(this)
                 );
 
+            // TODO: General dispatch token, move this to Reader.
             case '#': {
                 switch (c1) {
                     case '"':

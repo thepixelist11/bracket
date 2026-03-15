@@ -124,6 +124,27 @@
  *
  * Ellipsis ----------- Ellipsis token - '...'
  *                        Literal: <none>
+ *
+ * Keyword ------------ Keyword token - '#:'
+ *                        Literal: <string>
+ *
+ * VectorStart -------- Vector Start token - '#('
+ *                        Literal: <none>
+ *
+ * DatumComment ------- Datum Comment token - '#;'
+ *                        Literal: <none>
+ *
+ * BlockCommentStart -- Block Comment Start token - '#|'
+ *                        Literal: <none>
+ *
+ * BlockCommentEnd ---- Block Comment End token - '|#'
+ *                        Literal: <none>
+ *
+ * Shebang ------------ Shebang token - '#!'
+ *                        Literal: <string>
+ *
+ * RadixPrefix -------- Radix Prefix token - '#[b|o|x|d]'
+ *                        Literal: <number>
  */
 
 import { ErrorKind } from "../shared/errors.js";
@@ -178,6 +199,13 @@ export enum TokenKind {
     RParen,
     Dot,
     Ellipsis,
+    Keyword,
+    VectorStart,
+    DatumComment,
+    BlockCommentStart,
+    BlockCommentEnd,
+    Shebang,
+    RadixPrefix,
 };
 
 type TokenKindLiteralMap<T extends TokenKind> =
@@ -196,6 +224,13 @@ type TokenKindLiteralMap<T extends TokenKind> =
     T extends TokenKind.RParen ? ParenKind :
     T extends TokenKind.Dot ? undefined :
     T extends TokenKind.Ellipsis ? undefined :
+    T extends TokenKind.Keyword ? string :
+    T extends TokenKind.VectorStart ? undefined :
+    T extends TokenKind.DatumComment ? undefined :
+    T extends TokenKind.BlockCommentStart ? undefined :
+    T extends TokenKind.BlockCommentEnd ? undefined :
+    T extends TokenKind.Shebang ? string :
+    T extends TokenKind.RadixPrefix ? number :
     never;
 
 export type TokenMetadata = Partial<{
@@ -243,6 +278,13 @@ export function TokenLParen(kind: ParenKind, meta?: TokenMetadata) { return new 
 export function TokenRParen(kind: ParenKind, meta?: TokenMetadata) { return new Token(TokenKind.RParen, kind, meta); }
 export function TokenDot(meta?: TokenMetadata) { return new Token(TokenKind.Dot, undefined, meta); }
 export function TokenEllipsis(meta?: TokenMetadata) { return new Token(TokenKind.Ellipsis, undefined, meta); }
+export function TokenKeyword(keyword: string, meta?: TokenMetadata) { return new Token(TokenKind.Keyword, keyword, meta); }
+export function TokenVectorStart(meta?: TokenMetadata) { return new Token(TokenKind.VectorStart, undefined, meta); }
+export function TokenDatumComment(meta?: TokenMetadata) { return new Token(TokenKind.DatumComment, undefined, meta); }
+export function TokenBlockCommentStart(meta?: TokenMetadata) { return new Token(TokenKind.BlockCommentStart, undefined, meta); }
+export function TokenBlockCommentEnd(meta?: TokenMetadata) { return new Token(TokenKind.BlockCommentEnd, undefined, meta); }
+export function TokenShebang(shebang: string, meta?: TokenMetadata) { return new Token(TokenKind.Shebang, shebang, meta); }
+export function TokenRadixPrefix(radix: number, meta?: TokenMetadata) { return new Token(TokenKind.RadixPrefix, radix, meta); }
 
 /*        Token Factory Exhaustiveness Checking       */
 

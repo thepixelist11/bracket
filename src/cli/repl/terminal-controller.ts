@@ -10,34 +10,49 @@ export interface TerminalControllerOptions {
     on_exit: (code: number) => void;
     clear_buffer_on_commit: boolean;
     prompt: string;
+    newline_on_commit: boolean;
 };
 
-type TerminalControllerInputCallback = (controller: TerminalController) => void;
+type TerminalControllerInputCallback = (controller: TerminalController, key: string) => void;
+
+export const enum KeyPress {
+    ETX = "\u0003",
+    EOT = "\u0004",
+    HT = "\u0009",
+    LF = "\u000a",
+    VT = "\u000b",
+    FF = "\u000c",
+    CR = "\u000d",
+    DEL = "\u007f",
+    UP = "\u001b[A",
+    DOWN = "\u001b[B",
+    RIGHT = "\u001b[C",
+    LEFT = "\u001b[D",
+    CBS = "\u001c",
+};
 
 export class TerminalController {
-    public readonly ops: Readonly<TerminalControllerOptions>;
-    private buffer: string[] = [""];
-    private cursor_row = 0;
-    private cursor_col = 0;
-    private last_rendered: string[] = [];
-    private last_rendered_lines = 0;
-    private last_cursor_row = 0;
+    public readonly opts: Readonly<TerminalControllerOptions>;
+    public buffer: string[] = [""];
+    public cursor_row = 0;
+    public cursor_col = 0;
+    public last_rendered: string[] = [];
+    public last_rendered_lines = 0;
+    public last_cursor_row = 0;
 
-    private __key_press_handlers = new Map<string, TerminalControllerInputCallback>();
+    private __key_press_handlers_str = new Map<string, TerminalControllerInputCallback>();
+    private __key_press_handlers_pred: [(key: string) => boolean, TerminalControllerInputCallback][] = [];
 
-    constructor(ops: Partial<TerminalControllerOptions> = {}) {
-        this.ops = {
-            use_hist: ops.use_hist ?? false,
-            output: ops.output ?? Output.STDOUT,
-            input: ops.input ?? Input.STDIN,
-            on_exit: ops.on_exit ?? (() => { }),
-            clear_buffer_on_commit: ops.clear_buffer_on_commit ?? true,
-            prompt: ops.prompt ?? "",
-        };
+    constructor(opts: Partial<TerminalControllerOptions> = {}) {
+        this.opts = TerminalController.defaultOptions(opts);
+    }
+
+    public currentLine() {
+        return this.buffer[this.cursor_row] ?? "";
     }
 
     public start(): Result {
-        const input = this.ops.input;
+        const input = this.opts.input;
 
         if (input.isTTY) process.stdin.setRawMode(true);
         else return Err(new REPLError("this REPL requires a TTY."));
@@ -51,55 +66,68 @@ export class TerminalController {
         return Ok();
     }
 
-    public exit(code = 0) {
-        this.ops.on_exit(code);
+    public exit = (code = 0) => {
+        this.opts.on_exit(code);
 
-        if (this.ops.input.isTTY) {
-            this.ops.input.setRawMode(false);
-            this.ops.input.pause();
+        if (this.opts.input.isTTY) {
+            this.opts.input.setRawMode(false);
+            this.opts.input.pause();
         }
     }
 
     public commitBuffer() {
-        const buf = this.buffer.join("\n");
-        this.__onBufferCommit(buf);
-        if (this.ops.clear_buffer_on_commit) this.reset();
+        if (this.opts.newline_on_commit)
+            this.outputNewline();
+
+        if (this.__onBufferCommit)
+            this.__onBufferCommit(this.buffer);
+
+        if (this.opts.clear_buffer_on_commit) this.reset();
     }
 
     public reset() {
-        this.buffer = [];
+        this.buffer = [""];
         this.cursor_row = 0;
         this.cursor_col = 0;
         this.render();
     }
 
     public render() {
-        this.ops.output.write("\r\u001b[2K");
-        this.ops.output.write(
-            this.ops.prompt +
+        this.opts.output.write("\r\u001b[2K");
+        this.opts.output.write(
+            this.opts.prompt +
             this.buffer[0]
             // this.buffer.join(`\n${" ".repeat(this.ops.prompt.length)}`)
         );
 
-        this.ops.output.write(`\r\u001b[${this.ops.prompt.length + this.cursor_col}C`);
+        this.opts.output.write(`\r\u001b[${this.opts.prompt.length + this.cursor_col}C`);
     }
 
     public clear() {
-        this.ops.output.write("\r\u001b[2J\u001b[H");
+        this.opts.output.write("\r\u001b[2J\u001b[H");
         this.last_rendered = [];
         this.last_cursor_row = 0;
     }
 
-    public onBufferCommit(cb: (buf: string) => void) {
+    public onBufferCommit(cb: (buf: string[]) => void) {
         this.__onBufferCommit = cb;
     }
 
-    public onKeyPress(key: string, cb: TerminalControllerInputCallback) {
-        this.__key_press_handlers.set(key, cb);
+    public onKeyPress(key: string, cb: TerminalControllerInputCallback): void;
+    public onKeyPress(key: string[], cb: TerminalControllerInputCallback): void;
+    public onKeyPress(key: (key: string) => boolean, cb: TerminalControllerInputCallback): void;
+    public onKeyPress(key: string | string[] | ((key: string) => boolean), cb: TerminalControllerInputCallback) {
+        if (typeof key === "string")
+            this.__key_press_handlers_str.set(key, cb);
+        else if (Array.isArray(key))
+            for (const k of key)
+                this.__key_press_handlers_str.set(k, cb);
+        else if (typeof key === "function")
+            this.__key_press_handlers_pred.push([key, cb]);
     }
 
     public removeKeyPressHandler(key: string): boolean {
-        return this.__key_press_handlers.delete(key);
+        return this.__key_press_handlers_str.delete(key);
     }
 
     public insertChar(ch: string): void {
@@ -115,29 +143,94 @@ export class TerminalController {
                 this.buffer[this.cursor_row].slice(0, this.cursor_col) +
                 ch +
                 this.buffer[this.cursor_row].slice(this.cursor_col);
-            this.cursor_col += ch.length;
+            this.cursor_col++;
         }
     }
 
-    private __onBufferCommit: (buf: string) => void = () => { };
-    private setupExitHandlers() {
-        this.ops.input.on("SIGINT", this.exit);
-        this.ops.input.on("SIGUSR1", this.exit);
-        this.ops.input.on("SIGUSR2", this.exit);
-        this.ops.input.on("uncaughtException", err => {
-            this.ops.output.error(err);
+    public backspace(): void {
+        if (this.cursor_col === 0) return;
+
+        this.buffer[this.cursor_row] =
+            this.buffer[this.cursor_row].slice(0, this.cursor_col - 1) +
+            this.buffer[this.cursor_row].slice(this.cursor_col);
+        this.cursor_col--;
+    }
+
+    public moveCursorLeft(n = 1): void {
+        if (this.cursor_col - n >= 0) {
+            this.cursor_col -= n;
+        } else if (this.cursor_row - n >= 0) {
+            // for multi-line editing
+        }
+    }
+
+    public moveCursorRight(n = 1): void {
+        if (this.cursor_col + n <= this.currentLine().length) {
+            this.cursor_col += n;
+
+        } else if (this.cursor_row + n <= this.buffer.length - 1) {
+            // for multi-line editing
+        }
+    }
+
+    public moveCursorTo(row: number, col: number): void {
+        this.cursor_row = Math.max(Math.min(row, this.buffer.length - 1), 0);
+        this.cursor_col = Math.max(Math.min(col, this.buffer[this.cursor_row].length), 0);
+    }
+
+    public outputNewline(): boolean {
+        return this.opts.output.write("\n");
+    }
+
+    public output(str: string): boolean {
+        return this.opts.output.write(str);
+    }
+
+    private __onBufferCommit: (buf: string[]) => void = () => { };
+    private setupExitHandlers(): void {
+        process.on("SIGINT", this.exit);
+        process.on("SIGUSR1", this.exit);
+        process.on("SIGUSR2", this.exit);
+        process.on("uncaughtException", err => {
+            this.opts.output.error(err);
             this.exit(1);
         });
     }
 
-    private handleInput(data: Buffer<ArrayBuffer>) {
+    private handleInput = (data: Buffer): void => {
         const key_str = String(data);
 
-        for (const [key, cb] of this.__key_press_handlers) {
-            if (key_str === key)
-                cb(this);
+        for (const [key, cb] of this.__key_press_handlers_str) {
+            if (key_str === key) {
+                cb(this, key_str);
+                return;
+            }
         }
 
-        this.render();
+        for (const [pred, cb] of this.__key_press_handlers_pred) {
+            if (pred(key_str)) {
+                cb(this, key_str);
+                return;
+            }
+        }
     }
+
+    static defaultOptions(opts: Partial<TerminalControllerOptions> = {}): TerminalControllerOptions {
+        return {
+            use_hist: opts.use_hist ?? false,
+            output: opts.output ?? Output.STDOUT,
+            input: opts.input ?? Input.STDIN,
+            on_exit: opts.on_exit ?? (() => { }),
+            clear_buffer_on_commit: opts.clear_buffer_on_commit ?? true,
+            prompt: opts.prompt ?? "",
+            newline_on_commit: opts.newline_on_commit ?? true,
+        };
+    }
+
+    static KEYPRESS_DEFAULT = () => true;
+    static KEYPRESS_ASCII_PRINTABLE = (key: string) =>
+        key.length === 1 &&
+        key[0].charCodeAt(0) >= 32 && // 32 == space
+        key[0].charCodeAt(0) < 127; // 127 == delete
+    static KEYPRESS_PRINTABLE = (key: string) => /[^\p{C}]/u.test(key);
 }

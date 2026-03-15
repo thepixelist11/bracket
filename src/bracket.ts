@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 
-import { Lexer } from "./lexer/lexer.js";
+import { Input } from "./cli/io/input.js";
+import { Output } from "./cli/io/output.js";
+import { REPL } from "./cli/repl/repl.js";
+import { REPL_PROMPT, REPL_WELCOME_MESSAGE } from "./shared/globals.js";
+import { BACKEND_TOKENIZE } from "./cli/repl/backends/tokenize.js";
+import path from "path";
 
-const toks = Lexer.lex(`#"\\uffff"`);
+const repl = new REPL(BACKEND_TOKENIZE, {
+    use_hist: true,
+    history_size: 1000,
+    history_file: path.join(process.env.HOME ?? "./", ".bracket_repl_history"),
+    banner_enabled: true,
+    welcome_message: REPL_WELCOME_MESSAGE,
+    clear_buffer_on_commit: true,
+    prompt: REPL_PROMPT,
+    input: Input.STDIN,
+    output: Output.STDOUT,
+    newline_on_commit: true,
+});
 
-console.log("===== tokens =====");
-for (const tok of toks) {
-    console.log(tok.toString());
-}
+repl.start();
