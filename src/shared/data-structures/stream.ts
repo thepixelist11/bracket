@@ -89,17 +89,21 @@ export class Stream<T> {
     private _mark_set: Set<number> = new Set();
 
     constructor(data: Iterable<T> = [], start: number = 0, end?: number) {
-        if (Array.isArray(data))
-            this._data = data.slice(start, end);
-        else
-            this._data = [...data].slice(start, end);
+        if (Array.isArray(data)) this._data = data.slice(start, end);
+        else this._data = [...data].slice(start, end);
 
         this._idx = 0;
     }
 
-    get idx() { return this._idx }
-    get is_done(): boolean { return this._idx >= this.size }
-    get size() { return this._data.length }
+    get idx() {
+        return this._idx;
+    }
+    get is_done(): boolean {
+        return this._idx >= this.size;
+    }
+    get size() {
+        return this._data.length;
+    }
 
     protected advance(count = 1): void {
         this._idx = Math.min(this.size, this._idx + count);
@@ -134,10 +138,7 @@ export class Stream<T> {
     public readWhile(pred: (item: T) => boolean): T[] {
         let start = this._idx;
 
-        while (
-            !this.is_done &&
-            pred(this._data[this._idx])
-        ) {
+        while (!this.is_done && pred(this._data[this._idx])) {
             this.advance(1);
         }
 
@@ -148,11 +149,7 @@ export class Stream<T> {
         let count = 0;
         let start = this._idx;
 
-        while (
-            !this.is_done &&
-            pred(this._data[this._idx]) &&
-            (count++) < n
-        ) {
+        while (!this.is_done && pred(this._data[this._idx]) && count++ < n) {
             this.advance(1);
         }
 
@@ -163,10 +160,7 @@ export class Stream<T> {
         let start = this._idx;
         let end = start;
 
-        while (
-            !this.is_done &&
-            pred(this._data[this._idx])
-        ) {
+        while (!this.is_done && pred(this._data[this._idx])) {
             end++;
         }
 
@@ -178,11 +172,7 @@ export class Stream<T> {
         let start = this._idx;
         let end = start;
 
-        while (
-            !this.is_done &&
-            pred(this._data[this._idx]) &&
-            (count++) < n
-        ) {
+        while (!this.is_done && pred(this._data[this._idx]) && count++ < n) {
             end++;
         }
 
@@ -192,12 +182,12 @@ export class Stream<T> {
     public consumeIf(pred: (item: T) => boolean): T | undefined {
         const item = this.peek();
         if (item === Stream.Done) return undefined;
-        return pred(item as T) ? this.next() as T : undefined;
+        return pred(item as T) ? (this.next() as T) : undefined;
     }
 
     public consumeIfThen(
         pred: (item: T) => boolean,
-        cb: (stream: Stream<T>) => void
+        cb: (stream: Stream<T>) => void,
     ): void {
         const item = this.peek();
         if (item === Stream.Done) return;
@@ -210,16 +200,20 @@ export class Stream<T> {
 
     public expect(
         pred: (item: T) => boolean,
-        msg?: string
+        msg?: string,
     ): Result<T, StreamError> {
         const item = this.peek();
         if (item === Stream.Done)
             return Err(
-                new StreamError(`expect failed at ${this.idx}; ${msg ?? "stream ended"}`)
+                new StreamError(
+                    `expect failed at ${this.idx}; ${msg ?? "stream ended"}`,
+                ),
             );
         if (!pred(item as T))
             return Err(
-                new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"}`)
+                new Error(
+                    `expect failed at ${this.idx}; ${msg ?? "predicate failed"}`,
+                ),
             );
         return Ok(this.next() as T);
     }
@@ -227,16 +221,20 @@ export class Stream<T> {
     public expectN(
         pred: (item: T[]) => boolean,
         n: number,
-        msg?: string
+        msg?: string,
     ): Result<T, StreamError> {
         const item = this.peekN(n);
         if (item.length === 0)
             return Err(
-                new Error(`expect failed at ${this.idx}; ${msg ?? "stream ended"}`)
+                new Error(
+                    `expect failed at ${this.idx}; ${msg ?? "stream ended"}`,
+                ),
             );
         if (!pred(item as T[]))
             return Err(
-                new Error(`expect failed at ${this.idx}; ${msg ?? "predicate failed"}`)
+                new Error(
+                    `expect failed at ${this.idx}; ${msg ?? "predicate failed"}`,
+                ),
             );
         return Ok(this.nextN(n) as T);
     }
@@ -252,7 +250,9 @@ export class Stream<T> {
 
     public restore(mark: number): Result<undefined, StreamError> {
         if (!this._mark_set.has(mark))
-            return Err(new Error(`restore failed; index ${mark} was not marked`));
+            return Err(
+                new Error(`restore failed; index ${mark} was not marked`),
+            );
 
         this._idx = mark;
 
@@ -281,14 +281,14 @@ export class PositionalStream extends Stream<string> {
         private new_line_pattern = /\n/,
         file: string = "",
         start = 0,
-        end?: number
+        end?: number,
     ) {
         super(src, start, end);
         this._position = {
             row: 0,
             col: 0,
             idx: 0,
-            file
+            file,
         };
     }
 
@@ -342,5 +342,4 @@ export interface Position {
     col: number;
     idx: number;
     file: string;
-};
-
+}

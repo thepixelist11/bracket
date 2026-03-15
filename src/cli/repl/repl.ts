@@ -3,18 +3,19 @@ import {
     KeyPress,
     TERMINAL_CONTROLLER_DEFAULTS,
     TerminalController,
-    TerminalControllerOptions
+    TerminalControllerOptions,
 } from "./terminal-controller.js";
 
-
-export type REPLBackend =
-    (input: string, controller: TerminalController) => void | Promise<void>;
+export type REPLBackend = (
+    input: string,
+    controller: TerminalController,
+) => void | Promise<void>;
 
 export type REPLOptions = TerminalControllerOptions & {
-    banner_enabled: boolean,
-    welcome_message: string,
-    history_size: number,
-    history_file: string,
+    banner_enabled: boolean;
+    welcome_message: string;
+    history_size: number;
+    history_file: string;
 };
 
 export const REPL_DEFAULTS: REPLOptions = {
@@ -25,8 +26,12 @@ export const REPL_DEFAULTS: REPLOptions = {
     history_file: "",
 };
 
-const rerender = (fn: (ctl: TerminalController, key: string) => void) =>
-    (ctl: TerminalController, key: string) => { fn(ctl, key); ctl.render(); };
+const rerender =
+    (fn: (ctl: TerminalController, key: string) => void) =>
+    (ctl: TerminalController, key: string) => {
+        fn(ctl, key);
+        ctl.render();
+    };
 
 export class REPL {
     public readonly opts: Readonly<REPLOptions>;
@@ -44,77 +49,79 @@ export class REPL {
     }
 
     private registerKeybinds() {
-        this.controller.onKeyPress(
-            [KeyPress.EOT, KeyPress.ETX],
-            ctl => {
-                if (ctl.currentLine().length === 0)
-                    ctl.exit(0);
-                else
-                    ctl.reset();
-            });
+        this.controller.onKeyPress([KeyPress.EOT, KeyPress.ETX], (ctl) => {
+            if (ctl.currentLine().length === 0) ctl.exit(0);
+            else ctl.reset();
+        });
 
-        this.controller.onKeyPress(
-            [KeyPress.CR, KeyPress.LF],
-            ctl => ctl.commitBuffer());
+        this.controller.onKeyPress([KeyPress.CR, KeyPress.LF], (ctl) =>
+            ctl.commitBuffer(),
+        );
 
         this.controller.onKeyPress(
             KeyPress.FF,
-            rerender(ctl => ctl.clear()));
+            rerender((ctl) => ctl.clear()),
+        );
 
         this.controller.onKeyPress(
             KeyPress.RIGHT,
-            rerender(ctl => ctl.moveCursorRight()));
+            rerender((ctl) => ctl.moveCursorRight()),
+        );
 
         this.controller.onKeyPress(
             KeyPress.LEFT,
-            rerender(ctl => ctl.moveCursorLeft()));
+            rerender((ctl) => ctl.moveCursorLeft()),
+        );
 
         this.controller.onKeyPress(
             KeyPress.UP,
-            rerender(ctl => {
+            rerender((ctl) => {
                 if (!this.opts.use_hist) return;
                 const prev = this.hist.previous(ctl.current_buffer);
                 if (prev) {
                     ctl.setBuffer(prev);
                     ctl.moveCursorTo(prev.length, prev.at(-1)?.length ?? 0);
                 }
-            }));
+            }),
+        );
 
         this.controller.onKeyPress(
             KeyPress.DOWN,
-            rerender(ctl => {
+            rerender((ctl) => {
                 if (!this.opts.use_hist) return;
                 const next = this.hist.next();
                 if (next) {
                     ctl.setBuffer(next);
                     ctl.moveCursorTo(next.length, next.at(-1)?.length ?? 0);
                 }
-            }));
+            }),
+        );
 
         this.controller.onKeyPress(
             KeyPress.DEL,
-            rerender(ctl => {
+            rerender((ctl) => {
                 ctl.backspace();
                 if (this.opts.use_hist)
-                    this.hist.updateCurrent(ctl.current_buffer)
-            }));
+                    this.hist.updateCurrent(ctl.current_buffer);
+            }),
+        );
 
         this.controller.onKeyPress(
             TerminalController.KEYPRESS_PRINTABLE,
             rerender((ctl, key) => {
                 ctl.insertChar(key);
                 if (this.opts.use_hist)
-                    this.hist.updateCurrent(ctl.current_buffer)
-            }));
+                    this.hist.updateCurrent(ctl.current_buffer);
+            }),
+        );
 
-        this.controller.onBufferCommit(
-            async buf => {
-                if (this.opts.use_hist) {
-                    this.hist.append(buf);
-                    this.hist.appendFile(this.opts.history_file, buf);
-                }
-                await this.backend(buf.join("\n"), this.controller);
-            });
+        this.controller.onBufferCommit(async (buf) => {
+            if (this.opts.use_hist) {
+                this.hist.append(buf);
+                this.hist.appendFile(this.opts.history_file, buf);
+            }
+            await this.backend(buf.join("\n"), this.controller);
+        });
     }
 
     public loadHist(file_path: string): boolean {

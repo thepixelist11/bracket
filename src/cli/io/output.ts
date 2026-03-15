@@ -8,20 +8,28 @@ export class Output extends Writable {
     private readonly target: NodeJS.WritableStream | null;
     private readonly chunk_fn: (chunk: string) => string;
 
-    constructor(options: { forward_to?: NodeJS.WritableStream, chunk_fn?: (chunk: string) => string } = {}) {
+    constructor(
+        options: {
+            forward_to?: NodeJS.WritableStream;
+            chunk_fn?: (chunk: string) => string;
+        } = {},
+    ) {
         super({ decodeStrings: false });
         this.target = options?.forward_to ?? null;
 
-        if (this.target instanceof Output)
-            this.target.targeted.push(this);
+        if (this.target instanceof Output) this.target.targeted.push(this);
 
         this.chunk_fn = options?.chunk_fn ?? ((s) => s);
     }
 
-    _write(chunk: string | Buffer, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
-        const text = this.chunk_fn(typeof chunk === "string"
-            ? chunk
-            : chunk.toString(encoding));
+    _write(
+        chunk: string | Buffer,
+        encoding: BufferEncoding,
+        callback: (error?: Error | null) => void,
+    ): void {
+        const text = this.chunk_fn(
+            typeof chunk === "string" ? chunk : chunk.toString(encoding),
+        );
 
         this.write_count++;
         this.buffer += text;

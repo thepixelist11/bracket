@@ -154,13 +154,13 @@ import { Err, Ok, Result } from "../shared/data-structures/result.js";
 interface ErrorTokenLiteral {
     msg: string;
     kind: ErrorKind;
-};
+}
 
 export enum ParenKind {
     Paren,
     Bracket,
     Brace,
-};
+}
 
 export function getParenKind(ch: string): Result<ParenKind, Error> {
     switch (ch) {
@@ -178,7 +178,7 @@ export function getParenKind(ch: string): Result<ParenKind, Error> {
 
         default:
             return Err(
-                new Error(`getParenKind failed; invalid paren type: '${ch}'`)
+                new Error(`getParenKind failed; invalid paren type: '${ch}'`),
             );
     }
 }
@@ -206,35 +206,36 @@ export enum TokenKind {
     BlockCommentEnd,
     Shebang,
     RadixPrefix,
-};
+}
 
+// prettier-ignore
 type TokenKindLiteralMap<T extends TokenKind> =
-    T extends TokenKind.Str ? string :
-    T extends TokenKind.ByteStr ? string :
-    T extends TokenKind.Seq ? string :
-    T extends TokenKind.Quote ? undefined :
-    T extends TokenKind.Quasiquote ? undefined :
-    T extends TokenKind.Unquote ? undefined :
-    T extends TokenKind.UnquoteSplicing ? undefined :
-    T extends TokenKind.Bool ? boolean :
-    T extends TokenKind.Char ? string :
-    T extends TokenKind.EOF ? undefined :
-    T extends TokenKind.Error ? ErrorTokenLiteral :
-    T extends TokenKind.LParen ? ParenKind :
-    T extends TokenKind.RParen ? ParenKind :
-    T extends TokenKind.Dot ? undefined :
-    T extends TokenKind.Ellipsis ? undefined :
-    T extends TokenKind.Keyword ? string :
-    T extends TokenKind.VectorStart ? undefined :
-    T extends TokenKind.DatumComment ? undefined :
-    T extends TokenKind.BlockCommentStart ? undefined :
-    T extends TokenKind.BlockCommentEnd ? undefined :
-    T extends TokenKind.Shebang ? string :
-    T extends TokenKind.RadixPrefix ? number :
-    never;
+    T extends TokenKind.Str ? string
+    : T extends TokenKind.ByteStr ? string
+    : T extends TokenKind.Seq ? string
+    : T extends TokenKind.Quote ? undefined
+    : T extends TokenKind.Quasiquote ? undefined
+    : T extends TokenKind.Unquote ? undefined
+    : T extends TokenKind.UnquoteSplicing ? undefined
+    : T extends TokenKind.Bool ? boolean
+    : T extends TokenKind.Char ? string
+    : T extends TokenKind.EOF ? undefined
+    : T extends TokenKind.Error ? ErrorTokenLiteral
+    : T extends TokenKind.LParen ? ParenKind
+    : T extends TokenKind.RParen ? ParenKind
+    : T extends TokenKind.Dot ? undefined
+    : T extends TokenKind.Ellipsis ? undefined
+    : T extends TokenKind.Keyword ? string
+    : T extends TokenKind.VectorStart ? undefined
+    : T extends TokenKind.DatumComment ? undefined
+    : T extends TokenKind.BlockCommentStart ? undefined
+    : T extends TokenKind.BlockCommentEnd ? undefined
+    : T extends TokenKind.Shebang ? string
+    : T extends TokenKind.RadixPrefix ? number
+    : never;
 
 export type TokenMetadata = Partial<{
-    pos: Position
+    pos: Position;
 }> & { [key: string]: unknown };
 
 export class Token<T extends TokenKind = TokenKind> {
@@ -242,17 +243,26 @@ export class Token<T extends TokenKind = TokenKind> {
         private readonly _kind: T,
         private readonly _literal: TokenKindLiteralMap<T>,
         private readonly _meta: Readonly<TokenMetadata> = {},
-    ) { }
+    ) {}
 
-    get kind() { return this._kind; }
-    get literal() { return this._literal; }
-    get meta() { return this._meta; }
+    get kind() {
+        return this._kind;
+    }
+    get literal() {
+        return this._literal;
+    }
+    get meta() {
+        return this._meta;
+    }
 
     public toString() {
         switch (this.kind) {
             case TokenKind.Error: {
-                const kind_str = (this.literal as ErrorTokenLiteral).kind ?? "<generic_error>";
-                const msg_str = (this.literal as ErrorTokenLiteral).msg ?? "<empty>";
+                const kind_str =
+                    (this.literal as ErrorTokenLiteral).kind ??
+                    "<generic_error>";
+                const msg_str =
+                    (this.literal as ErrorTokenLiteral).msg ?? "<empty>";
                 return `TokenError(${kind_str}:${msg_str})`;
             }
 
@@ -272,28 +282,93 @@ export class Token<T extends TokenKind = TokenKind> {
     }
 }
 
-export function TokenStr(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Str, literal, meta); }
-export function TokenByteStr(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.ByteStr, literal, meta); }
-export function TokenSeq(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Seq, literal, meta); }
-export function TokenQuote(meta?: TokenMetadata) { return new Token(TokenKind.Quote, undefined, meta); }
-export function TokenQuasiquote(meta?: TokenMetadata) { return new Token(TokenKind.Quasiquote, undefined, meta); }
-export function TokenUnquote(meta?: TokenMetadata) { return new Token(TokenKind.Unquote, undefined, meta); }
-export function TokenUnquoteSplicing(meta?: TokenMetadata) { return new Token(TokenKind.UnquoteSplicing, undefined, meta); }
-export function TokenBool(literal: boolean, meta?: TokenMetadata) { return new Token(TokenKind.Bool, literal, meta); }
-export function TokenChar(literal: string, meta?: TokenMetadata) { return new Token(TokenKind.Char, literal, meta); }
-export function TokenEOF(meta?: TokenMetadata) { return new Token(TokenKind.EOF, undefined, meta); }
-export function TokenError(literal: ErrorTokenLiteral, meta?: TokenMetadata) { return new Token(TokenKind.Error, literal, meta); }
-export function TokenLParen(kind: ParenKind, meta?: TokenMetadata) { return new Token(TokenKind.LParen, kind, meta); }
-export function TokenRParen(kind: ParenKind, meta?: TokenMetadata) { return new Token(TokenKind.RParen, kind, meta); }
-export function TokenDot(meta?: TokenMetadata) { return new Token(TokenKind.Dot, undefined, meta); }
-export function TokenEllipsis(meta?: TokenMetadata) { return new Token(TokenKind.Ellipsis, undefined, meta); }
-export function TokenKeyword(keyword: string, meta?: TokenMetadata) { return new Token(TokenKind.Keyword, keyword, meta); }
-export function TokenVectorStart(meta?: TokenMetadata) { return new Token(TokenKind.VectorStart, undefined, meta); }
-export function TokenDatumComment(meta?: TokenMetadata) { return new Token(TokenKind.DatumComment, undefined, meta); }
-export function TokenBlockCommentStart(meta?: TokenMetadata) { return new Token(TokenKind.BlockCommentStart, undefined, meta); }
-export function TokenBlockCommentEnd(meta?: TokenMetadata) { return new Token(TokenKind.BlockCommentEnd, undefined, meta); }
-export function TokenShebang(shebang: string, meta?: TokenMetadata) { return new Token(TokenKind.Shebang, shebang, meta); }
-export function TokenRadixPrefix(radix: number, meta?: TokenMetadata) { return new Token(TokenKind.RadixPrefix, radix, meta); }
+export function TokenStr(literal: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.Str, literal, meta);
+}
+
+export function TokenByteStr(literal: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.ByteStr, literal, meta);
+}
+
+export function TokenSeq(literal: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.Seq, literal, meta);
+}
+
+export function TokenQuote(meta?: TokenMetadata) {
+    return new Token(TokenKind.Quote, undefined, meta);
+}
+
+export function TokenQuasiquote(meta?: TokenMetadata) {
+    return new Token(TokenKind.Quasiquote, undefined, meta);
+}
+
+export function TokenUnquote(meta?: TokenMetadata) {
+    return new Token(TokenKind.Unquote, undefined, meta);
+}
+
+export function TokenUnquoteSplicing(meta?: TokenMetadata) {
+    return new Token(TokenKind.UnquoteSplicing, undefined, meta);
+}
+
+export function TokenBool(literal: boolean, meta?: TokenMetadata) {
+    return new Token(TokenKind.Bool, literal, meta);
+}
+
+export function TokenChar(literal: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.Char, literal, meta);
+}
+
+export function TokenEOF(meta?: TokenMetadata) {
+    return new Token(TokenKind.EOF, undefined, meta);
+}
+
+export function TokenError(literal: ErrorTokenLiteral, meta?: TokenMetadata) {
+    return new Token(TokenKind.Error, literal, meta);
+}
+
+export function TokenLParen(kind: ParenKind, meta?: TokenMetadata) {
+    return new Token(TokenKind.LParen, kind, meta);
+}
+
+export function TokenRParen(kind: ParenKind, meta?: TokenMetadata) {
+    return new Token(TokenKind.RParen, kind, meta);
+}
+
+export function TokenDot(meta?: TokenMetadata) {
+    return new Token(TokenKind.Dot, undefined, meta);
+}
+
+export function TokenEllipsis(meta?: TokenMetadata) {
+    return new Token(TokenKind.Ellipsis, undefined, meta);
+}
+
+export function TokenKeyword(keyword: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.Keyword, keyword, meta);
+}
+
+export function TokenVectorStart(meta?: TokenMetadata) {
+    return new Token(TokenKind.VectorStart, undefined, meta);
+}
+
+export function TokenDatumComment(meta?: TokenMetadata) {
+    return new Token(TokenKind.DatumComment, undefined, meta);
+}
+
+export function TokenBlockCommentStart(meta?: TokenMetadata) {
+    return new Token(TokenKind.BlockCommentStart, undefined, meta);
+}
+
+export function TokenBlockCommentEnd(meta?: TokenMetadata) {
+    return new Token(TokenKind.BlockCommentEnd, undefined, meta);
+}
+
+export function TokenShebang(shebang: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.Shebang, shebang, meta);
+}
+
+export function TokenRadixPrefix(radix: number, meta?: TokenMetadata) {
+    return new Token(TokenKind.RadixPrefix, radix, meta);
+}
 
 /*        Token Factory Exhaustiveness Checking       */
 
@@ -303,8 +378,7 @@ type __ExpectedFactoryNames = `Token${__TokenKindNames}`;
 type __ModuleExports = typeof import("./tokens.ts");
 type __ActualFactoryNames = Extract<keyof __ModuleExports, `Token${string}`>;
 type __MissingFactories = Exclude<__ExpectedFactoryNames, __ActualFactoryNames>;
-type __AssertAllFactoriesExist =
-    [__MissingFactories] extends [never]
+type __AssertAllFactoriesExist = [__MissingFactories] extends [never]
     ? true
     : __ExpandMissing<__MissingFactories>;
 const __assertTokenFactories: __AssertAllFactoriesExist = true;

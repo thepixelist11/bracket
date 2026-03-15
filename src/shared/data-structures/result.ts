@@ -1,10 +1,12 @@
 import { IterValue } from "../util/types.js";
 
-export class Result<T = unknown, E = unknown> implements Iterable<IterValue<T>> {
+export class Result<T = unknown, E = unknown> implements Iterable<
+    IterValue<T>
+> {
     private constructor(
         public readonly ok: boolean,
         private readonly _val?: T,
-        private readonly _err?: E
+        private readonly _err?: E,
     ) { }
 
     static Ok<T>(val: T): Result<T, never> {
@@ -24,7 +26,8 @@ export class Result<T = unknown, E = unknown> implements Iterable<IterValue<T>> 
     }
 
     public val(): T {
-        if (!this.ok) throw new Error(`called val on Err with err: ${this.err}`);
+        if (!this.ok)
+            throw new Error(`called val on Err with err: ${this.err}`);
         return this._val as T;
     }
 
@@ -46,9 +49,7 @@ export class Result<T = unknown, E = unknown> implements Iterable<IterValue<T>> 
     }
 
     public and_then<U, F>(fn: (v: T) => Result<U, F>): Result<U, E | F> {
-        return this.ok
-            ? fn(this._val as T)
-            : Result.Err(this._err as E);
+        return this.ok ? fn(this._val as T) : Result.Err(this._err as E);
     }
 
     public unwrap(): T {
@@ -65,19 +66,22 @@ export class Result<T = unknown, E = unknown> implements Iterable<IterValue<T>> 
         if (!this.ok) return;
         const val = this._val;
 
-        if (val != null && typeof (val as any)[Symbol.iterator] === "function") {
+        if (
+            val != null &&
+            typeof (val as any)[Symbol.iterator] === "function"
+        ) {
             yield* val as unknown as Iterable<IterValue<T>>;
         }
     }
 }
 
 type OkResult<T> = Result<T, never> & {
-    ok: true
-}
+    ok: true;
+};
 
 type ErrResult<E> = Result<never, E> & {
-    ok: false
-}
+    ok: false;
+};
 
 export function Ok<T = undefined>(val?: T) {
     return Result.Ok(val!);

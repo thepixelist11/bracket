@@ -5,7 +5,7 @@ import { readEscape } from "./read-escape.js";
 export function readStringTok(l: Lexer) {
     const pos = l.position;
 
-    l.expect(ch => ch === '"', "read string failed; expected an opening \"");
+    l.expect((ch) => ch === '"', 'read string failed; expected an opening "');
 
     let literal = "";
 
@@ -16,7 +16,7 @@ export function readStringTok(l: Lexer) {
             case '"':
                 break read_loop;
 
-            case '\\':
+            case "\\":
                 literal += readEscape(l);
                 break;
 
@@ -26,7 +26,7 @@ export function readStringTok(l: Lexer) {
         }
     }
 
-    l.expect(ch => ch === '"', "read string failed; expected a closing \"");
+    l.expect((ch) => ch === '"', 'read string failed; expected a closing "');
 
     return TokenStr(literal, { pos });
 }

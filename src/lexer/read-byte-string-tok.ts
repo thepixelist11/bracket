@@ -9,13 +9,12 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
     const pos = l.position;
 
     let res = l.expectN(
-        str => str.join("") === '#"',
+        (str) => str.join("") === '#"',
         2,
-        "read byte string failed; expected an opening #\""
+        'read byte string failed; expected an opening #"',
     );
 
-    if (res.is_err())
-        return res.map_err(x => new LexerError(x.message));
+    if (res.is_err()) return res.map_err((x) => new LexerError(x.message));
 
     let literal = "";
 
@@ -26,7 +25,7 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
             case '"':
                 break read_loop;
 
-            case '\\':
+            case "\\":
                 const esc = readEscape(l);
                 if (esc.is_err()) return esc;
                 ch = esc.val();
@@ -42,17 +41,19 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
             return Err(
                 new Error(
                     `read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) ` +
-                    `is out of range of byte string [0, 255]`
-                )
+                        `is out of range of byte string [0, 255]`,
+                ),
             );
 
         literal += ch;
     }
 
-    res = l.expect(ch => ch === '"', "read byte string failed; expected a closing \"");
+    res = l.expect(
+        (ch) => ch === '"',
+        'read byte string failed; expected a closing "',
+    );
 
-    if (res.is_err())
-        return res.map_err(x => new LexerError(x.message));
+    if (res.is_err()) return res.map_err((x) => new LexerError(x.message));
 
     return Ok(TokenByteStr(literal, { pos }));
 }

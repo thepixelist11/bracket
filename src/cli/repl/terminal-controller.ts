@@ -7,7 +7,7 @@ export const TERMINAL_CONTROLLER_DEFAULTS = {
     use_hist: false,
     output: Output.STDOUT,
     input: Input.STDIN,
-    on_exit: (() => { }),
+    on_exit: () => {},
     clear_buffer_on_commit: true,
     prompt: "",
     newline_on_commit: true,
@@ -21,9 +21,12 @@ export interface TerminalControllerOptions {
     clear_buffer_on_commit: boolean;
     prompt: string;
     newline_on_commit: boolean;
-};
+}
 
-type TerminalControllerInputCallback = (controller: TerminalController, key: string) => void;
+type TerminalControllerInputCallback = (
+    controller: TerminalController,
+    key: string,
+) => void;
 
 export const enum KeyPress {
     ETX = "\u0003",
@@ -39,7 +42,7 @@ export const enum KeyPress {
     RIGHT = "\u001b[C",
     LEFT = "\u001b[D",
     CBS = "\u001c",
-};
+}
 
 export class TerminalController {
     public readonly opts: Readonly<TerminalControllerOptions>;
@@ -47,19 +50,29 @@ export class TerminalController {
     private cursor_row = 0;
     private cursor_col = 0;
 
-    private __key_press_handlers_str =
-        new Map<string, TerminalControllerInputCallback>();
+    private __key_press_handlers_str = new Map<
+        string,
+        TerminalControllerInputCallback
+    >();
 
-    private __key_press_handlers_pred:
-        [(key: string) => boolean, TerminalControllerInputCallback][] = [];
+    private __key_press_handlers_pred: [
+        (key: string) => boolean,
+        TerminalControllerInputCallback,
+    ][] = [];
 
     constructor(opts: Partial<TerminalControllerOptions> = {}) {
         this.opts = TerminalController.defaultOptions(opts);
     }
 
-    get row() { return this.cursor_row }
-    get col() { return this.cursor_col }
-    get current_buffer(): Readonly<string[]> { return this.buffer }
+    get row() {
+        return this.cursor_row;
+    }
+    get col() {
+        return this.cursor_col;
+    }
+    get current_buffer(): Readonly<string[]> {
+        return this.buffer;
+    }
 
     public setBuffer(buffer: string[]) {
         this.buffer = buffer;
@@ -91,14 +104,12 @@ export class TerminalController {
             this.opts.input.setRawMode(false);
             this.opts.input.pause();
         }
-    }
+    };
 
     public commitBuffer() {
-        if (this.opts.newline_on_commit)
-            this.outputNewline();
+        if (this.opts.newline_on_commit) this.outputNewline();
 
-        if (this.__onBufferCommit)
-            this.__onBufferCommit(this.buffer);
+        if (this.__onBufferCommit) this.__onBufferCommit(this.buffer);
 
         if (this.opts.clear_buffer_on_commit) this.reset();
     }
@@ -113,13 +124,12 @@ export class TerminalController {
     public render() {
         this.opts.output.write("\r\u001b[2K");
         this.opts.output.write(
-            this.opts.prompt +
-            this.buffer[0]
+            this.opts.prompt + this.buffer[0],
             // this.buffer.join(`\n${" ".repeat(this.ops.prompt.length)}`)
         );
 
         this.opts.output.write(
-            `\r\u001b[${this.opts.prompt.length + this.cursor_col}C`
+            `\r\u001b[${this.opts.prompt.length + this.cursor_col}C`,
         );
     }
 
@@ -133,16 +143,17 @@ export class TerminalController {
 
     public onKeyPress(key: string, cb: TerminalControllerInputCallback): void;
     public onKeyPress(key: string[], cb: TerminalControllerInputCallback): void;
-    public onKeyPress(key: (key: string) => boolean, cb: TerminalControllerInputCallback): void;
+    public onKeyPress(
+        key: (key: string) => boolean,
+        cb: TerminalControllerInputCallback,
+    ): void;
     public onKeyPress(
         key: string | string[] | ((key: string) => boolean),
-        cb: TerminalControllerInputCallback
+        cb: TerminalControllerInputCallback,
     ) {
-        if (typeof key === "string")
-            this.__key_press_handlers_str.set(key, cb);
+        if (typeof key === "string") this.__key_press_handlers_str.set(key, cb);
         else if (Array.isArray(key))
-            for (const k of key)
-                this.__key_press_handlers_str.set(k, cb);
+            for (const k of key) this.__key_press_handlers_str.set(k, cb);
         else if (typeof key === "function")
             this.__key_press_handlers_pred.push([key, cb]);
     }
@@ -153,7 +164,10 @@ export class TerminalController {
 
     public insertChar(ch: string): void {
         if (ch === "\n") {
-            const before = this.buffer[this.cursor_row].slice(0, this.cursor_col);
+            const before = this.buffer[this.cursor_row].slice(
+                0,
+                this.cursor_col,
+            );
             const after = this.buffer[this.cursor_row].slice(this.cursor_col);
             this.buffer[this.cursor_row] = before;
             this.cursor_row++;
@@ -188,7 +202,6 @@ export class TerminalController {
     public moveCursorRight(n = 1): void {
         if (this.cursor_col + n <= this.currentLine().length) {
             this.cursor_col += n;
-
         } else if (this.cursor_row + n <= this.buffer.length - 1) {
             // for multi-line editing
         }
@@ -196,7 +209,10 @@ export class TerminalController {
 
     public moveCursorTo(row: number, col: number): void {
         this.cursor_row = Math.max(Math.min(row, this.buffer.length - 1), 0);
-        this.cursor_col = Math.max(Math.min(col, this.buffer[this.cursor_row].length), 0);
+        this.cursor_col = Math.max(
+            Math.min(col, this.buffer[this.cursor_row].length),
+            0,
+        );
     }
 
     public outputNewline(): boolean {
@@ -207,12 +223,12 @@ export class TerminalController {
         return this.opts.output.write(str);
     }
 
-    private __onBufferCommit: (buf: string[]) => void = () => { };
+    private __onBufferCommit: (buf: string[]) => void = () => {};
     private setupExitHandlers(): void {
         process.on("SIGINT", this.exit);
         process.on("SIGUSR1", this.exit);
         process.on("SIGUSR2", this.exit);
-        process.on("uncaughtException", err => {
+        process.on("uncaughtException", (err) => {
             this.opts.output.error(err);
             this.exit(1);
         });
@@ -234,10 +250,10 @@ export class TerminalController {
                 return;
             }
         }
-    }
+    };
 
     static defaultOptions(
-        opts: Partial<TerminalControllerOptions> = {}
+        opts: Partial<TerminalControllerOptions> = {},
     ): TerminalControllerOptions {
         return {
             ...TERMINAL_CONTROLLER_DEFAULTS,

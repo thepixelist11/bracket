@@ -1,6 +1,6 @@
 export enum ErrorKind {
-    UnexpectedSyntax
-};
+    UnexpectedSyntax,
+}
 
 export class LexerError extends Error {
     constructor(msg: string = "", options?: ErrorOptions) {

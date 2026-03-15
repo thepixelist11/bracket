@@ -1,6 +1,7 @@
 export function convertSeqToString(ch: string) {
     const code = ch.codePointAt(0)!;
 
+    // prettier-ignore
     switch (code) {
         case 7: return "\a";
         case 8: return "\b";
@@ -17,10 +18,9 @@ export function convertSeqToString(ch: string) {
     }
 
     const hex = code.toString(16).toUpperCase();
-    const prefix = (code <= 0xFFFF ? "\\u" : "\\U");
-    return prefix + hex.padStart(code <= 0xFFFF ? 4 : 8, "0");
+    const prefix = code <= 0xffff ? "\\u" : "\\U";
+    return prefix + hex.padStart(code <= 0xffff ? 4 : 8, "0");
 }
-
 
 export function hexValue(ch: string) {
     const code = ch.charCodeAt(0);
@@ -50,8 +50,7 @@ export function decimalValue(ch: string) {
 
 export function isHex(str: string) {
     for (const ch of str) {
-        if (hexValue(ch) === -1)
-            return false;
+        if (hexValue(ch) === -1) return false;
     }
 
     return true;
@@ -59,8 +58,7 @@ export function isHex(str: string) {
 
 export function isOctal(str: string) {
     for (const ch of str) {
-        if (octalValue(ch) === -1)
-            return false;
+        if (octalValue(ch) === -1) return false;
     }
 
     return true;
@@ -68,8 +66,7 @@ export function isOctal(str: string) {
 
 export function isDecimalInt(str: string) {
     for (const ch of str) {
-        if (decimalValue(ch) === -1)
-            return false;
+        if (decimalValue(ch) === -1) return false;
     }
 
     return true;
@@ -109,8 +106,8 @@ export function isSequenceDelimiter(ch: string) {
         ch === ";" ||
         ch === "\uFEFF" ||
         isWhitespace(ch)
-    ) return true;
+    )
+        return true;
 
     return false;
 }
-

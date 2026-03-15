@@ -14,24 +14,23 @@ export function readSequenceTok(l: Lexer): Result<Token, LexerError> {
         const ch = l.peek() as string;
 
         switch (ch) {
-            case '|':
+            case "|":
                 quoted = !quoted;
                 l.next();
                 break;
 
-            case '\\':
+            case "\\":
                 l.next();
                 if (l.is_done)
                     return Err(
-                        new Error("read sequence failed; unexpected \\")
+                        new Error("read sequence failed; unexpected \\"),
                     );
 
                 literal += l.next() as string;
                 break;
 
             default:
-                if (!quoted && isSequenceDelimiter(ch))
-                    break read_loop;
+                if (!quoted && isSequenceDelimiter(ch)) break read_loop;
 
                 literal += l.next() as string;
                 break;
@@ -40,7 +39,7 @@ export function readSequenceTok(l: Lexer): Result<Token, LexerError> {
 
     if (quoted)
         return Err(
-            new LexerError("read sequence failed; expected a closing |")
+            new LexerError("read sequence failed; expected a closing |"),
         );
 
     return Ok(TokenSeq(literal, { pos }));

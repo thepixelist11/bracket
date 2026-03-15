@@ -10,7 +10,7 @@ export class TerminalHistory {
     public loadFile(
         file_path: string,
         size: number,
-        filter_lines: ((line: string) => boolean) = () => true
+        filter_lines: (line: string) => boolean = () => true,
     ): boolean {
         if (
             file_path === "" ||
@@ -27,14 +27,12 @@ export class TerminalHistory {
         let i = 0;
         while (i < raw.length) {
             const count = parseInt(raw[i++], 10);
-            if (Number.isNaN(count) || count <= 0)
-                break;
+            if (Number.isNaN(count) || count <= 0) break;
 
             const cmd = raw.slice(i, i + count);
             i += count;
 
-            if (filter_lines(cmd.join("\n")))
-                entries.push(cmd);
+            if (filter_lines(cmd.join("\n"))) entries.push(cmd);
         }
 
         this.hist = entries.reverse().slice(0, size);
@@ -51,18 +49,11 @@ export class TerminalHistory {
     }
 
     public appendFile(file_path: string, buffer: readonly string[]): boolean {
-        if (
-            file_path === "" ||
-            buffer.length === 0
-        ) {
+        if (file_path === "" || buffer.length === 0) {
             return false;
         }
 
-        const entry =
-            buffer.length +
-            "\n" +
-            buffer.join("\n") +
-            "\n";
+        const entry = buffer.length + "\n" + buffer.join("\n") + "\n";
 
         fs.appendFileSync(file_path, entry);
 
