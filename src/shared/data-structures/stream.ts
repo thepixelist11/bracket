@@ -81,6 +81,7 @@
  */
 
 import { StreamError } from "../errors.js";
+import { Position } from "../util/types.js";
 import { Err, Ok, Result } from "./result.js";
 
 export class Stream<T> {
@@ -317,7 +318,9 @@ export class PositionalStream extends Stream<string> {
     public restore(mark: number): Result<undefined, StreamError> {
         const mark_pos = this._marks.get(mark);
         if (!mark_pos)
-            return Err(new Error(`restore failed; mark not set: ${mark}`));
+            return Err(
+                new StreamError(`restore failed; mark not set: ${mark}`),
+            );
 
         this._idx = mark;
         this._position = mark_pos;
@@ -335,11 +338,4 @@ export class PositionalStream extends Stream<string> {
             this._position.col++;
         }
     }
-}
-
-export interface Position {
-    row: number;
-    col: number;
-    idx: number;
-    file: string;
 }

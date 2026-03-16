@@ -1,13 +1,26 @@
-import { TokenStr } from "./tokens.js";
+import { Token, TokenKind, TokenStr } from "./tokens.js";
 import { Lexer } from "./lexer.js";
 import { readEscape } from "./read-escape.js";
+import { Result, Ok } from "../shared/data-structures/result.js";
+import { LexerError, LexerErrorKind, toLexerError } from "./lexer-errors.js";
 
-export function readStringTok(l: Lexer) {
+export function readStringTok(
+    l: Lexer,
+): Result<Token<TokenKind.Str>, LexerError> {
     const pos = l.position;
 
-    l.expect((ch) => ch === '"', 'read string failed; expected an opening "');
+    let res = l.expect(
+        (ch) => ch === '"',
+        'read string failed; expected an opening "',
+    );
+
+    if (res.is_err())
+        return res.map_err((err) =>
+            toLexerError(err, LexerErrorKind.UnexpectedSyntax, pos),
+        );
 
     let literal = "";
+    let err: null | Result<never, LexerError> = null;
 
     read_loop: while (!l.is_done) {
         const ch = l.peek() as string;
@@ -17,7 +30,14 @@ export function readStringTok(l: Lexer) {
                 break read_loop;
 
             case "\\":
-                literal += readEscape(l);
+                const esc = readEscape(l);
+
+                if (esc.is_err()) {
+                    err ??= esc;
+                } else {
+                    literal += esc.unwrap();
+                }
+
                 break;
 
             default:
@@ -26,7 +46,17 @@ export function readStringTok(l: Lexer) {
         }
     }
 
-    l.expect((ch) => ch === '"', 'read string failed; expected a closing "');
+    res = l.expect(
+        (ch) => ch === '"',
+        'read string failed; expected a closing "',
+    );
 
-    return TokenStr(literal, { pos });
+    if (res.is_err())
+        return res.map_err((err) =>
+            toLexerError(err, LexerErrorKind.MissingClosing, pos),
+        );
+
+    if (err) return err;
+
+    return Ok(TokenStr(literal, { pos }));
 }

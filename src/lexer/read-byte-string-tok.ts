@@ -1,6 +1,11 @@
-import { Err, Ok, Result } from "../shared/data-structures/result.js";
-import { LexerError } from "../shared/errors.js";
+import { Ok, Result } from "../shared/data-structures/result.js";
 import { isByteChar } from "../shared/util/strings.js";
+import {
+    LexerErrorKind,
+    LexerError,
+    toLexerError,
+    generalLexerError,
+} from "./lexer-errors.js";
 import { Lexer } from "./lexer.js";
 import { readEscape } from "./read-escape.js";
 import { Token, TokenByteStr } from "./tokens.js";
@@ -14,7 +19,10 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
         'read byte string failed; expected an opening #"',
     );
 
-    if (res.is_err()) return res.map_err((x) => new LexerError(x.message));
+    if (res.is_err())
+        return res.map_err((x) =>
+            toLexerError(x, LexerErrorKind.UnexpectedSyntax, pos),
+        );
 
     let literal = "";
 
@@ -38,11 +46,10 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
         }
 
         if (!isByteChar(ch))
-            return Err(
-                new Error(
-                    `read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) ` +
-                        `is out of range of byte string [0, 255]`,
-                ),
+            return generalLexerError(
+                `read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) ` +
+                    `is out of range of byte string [0, 255]`,
+                pos,
             );
 
         literal += ch;
@@ -53,7 +60,10 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
         'read byte string failed; expected a closing "',
     );
 
-    if (res.is_err()) return res.map_err((x) => new LexerError(x.message));
+    if (res.is_err())
+        return res.map_err((x) =>
+            toLexerError(x, LexerErrorKind.MissingClosing, pos),
+        );
 
     return Ok(TokenByteStr(literal, { pos }));
 }

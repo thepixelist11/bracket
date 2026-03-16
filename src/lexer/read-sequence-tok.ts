@@ -1,14 +1,14 @@
-import { Err, Ok, Result } from "../shared/data-structures/result.js";
-import { LexerError } from "../shared/errors.js";
+import { Ok, Result } from "../shared/data-structures/result.js";
 import { isSequenceDelimiter } from "../shared/util/strings.js";
+import { LexerError, unexpectedSyntax } from "./lexer-errors.js";
 import { Lexer } from "./lexer.js";
 import { Token, TokenSeq } from "./tokens.js";
 
-export function readSequenceTok(l: Lexer): Result<Token, LexerError> {
+export function readSequence(l: Lexer): Result<string, LexerError> {
     const pos = l.position;
-
     let literal = "";
     let quoted = false;
+    let last_was_quoted = false;
 
     read_loop: while (!l.is_done) {
         const ch = l.peek() as string;
@@ -22,25 +22,41 @@ export function readSequenceTok(l: Lexer): Result<Token, LexerError> {
             case "\\":
                 l.next();
                 if (l.is_done)
-                    return Err(
-                        new Error("read sequence failed; unexpected \\"),
+                    return unexpectedSyntax(
+                        "read sequence failed; unexpected \\",
+                        pos,
                     );
 
                 literal += l.next() as string;
+                last_was_quoted = quoted;
                 break;
 
             default:
                 if (!quoted && isSequenceDelimiter(ch)) break read_loop;
 
                 literal += l.next() as string;
+                last_was_quoted = quoted;
                 break;
         }
     }
 
     if (quoted)
-        return Err(
-            new LexerError("read sequence failed; expected a closing |"),
+        return unexpectedSyntax(
+            "read sequence failed; expected a closing |",
+            pos,
         );
 
-    return Ok(TokenSeq(literal, { pos }));
+    if (literal === "." && !last_was_quoted)
+        return unexpectedSyntax("illegal use of .", pos);
+
+    return Ok(literal);
+}
+
+export function readSequenceTok(l: Lexer): Result<Token, LexerError> {
+    const pos = l.position;
+
+    const literal = readSequence(l);
+    if (literal.is_err()) return literal;
+
+    return Ok(TokenSeq(literal.unwrap(), { pos }));
 }

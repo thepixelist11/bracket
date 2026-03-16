@@ -1,13 +1,3 @@
-export enum ErrorKind {
-    UnexpectedSyntax,
-}
-
-export class LexerError extends Error {
-    constructor(msg: string = "", options?: ErrorOptions) {
-        super(msg, options);
-    }
-}
-
 export class StreamError extends Error {
     constructor(msg: string = "", options?: ErrorOptions) {
         super(msg, options);

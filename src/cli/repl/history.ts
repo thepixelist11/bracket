@@ -40,6 +40,7 @@ export class TerminalHistory {
         return true;
     }
 
+    // FIXME: Repeats on subsequent runs duplicate history
     public append(current_buffer: readonly string[]): void {
         if (current_buffer.length === 0) return;
         if (eq(this.hist[0], current_buffer)) return;

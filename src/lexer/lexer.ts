@@ -2,118 +2,58 @@ import { PositionalStream, Stream } from "../shared/data-structures/stream.js";
 import { readStringTok } from "./read-string-tok.js";
 import { readByteStringTok } from "./read-byte-string-tok.js";
 import { isSequenceDelimiter, isWhitespace } from "../shared/util/strings.js";
-import { readSequenceTok } from "./read-sequence-tok.js";
-import { LexerError } from "../shared/errors.js";
+import { readSequence, readSequenceTok } from "./read-sequence-tok.js";
 import { Ok, Result } from "../shared/data-structures/result.js";
 import {
     getParenKind,
     Token,
     TokenBool,
+    TokenDatumComment,
     TokenDot,
-    TokenEllipsis,
     TokenEOF,
+    TokenError,
+    TokenKeyword,
+    TokenLineComment,
     TokenLParen,
     TokenMetadata,
     TokenQuasiquote,
     TokenQuote,
     TokenRParen,
+    TokenShebang,
     TokenUnquote,
     TokenUnquoteSplicing,
+    TokenVectorStart,
 } from "./tokens.js";
+import {
+    LexerError,
+    LexerErrorKind,
+    toLexerError,
+    unexpectedSyntax,
+} from "./lexer-errors.js";
 
-export class Lexer {
-    private _src_stream: PositionalStream;
-
-    private constructor(src: string) {
-        this._src_stream = new PositionalStream(src);
-    }
-
-    get src() {
-        return this._src_stream;
-    }
-    get is_done() {
-        return this.src.is_done;
-    }
-    get size() {
-        return this.src.size;
-    }
-    get idx() {
-        return this.src.idx;
-    }
-    get position() {
-        return this.src.position;
-    }
-
-    public peek() {
-        return this.src.peek();
-    }
-
-    public peekN(n: number) {
-        return this.src.peekN(n);
-    }
-
-    public next() {
-        return this.src.next();
-    }
-
-    public nextN(n: number) {
-        return this.src.nextN(n);
-    }
-
-    public readWhile(pred: (item: string) => boolean) {
-        return this.src.readWhile(pred);
-    }
-
-    public readWhileN(pred: (item: string) => boolean, n: number) {
-        return this.src.readWhileN(pred, n);
-    }
-
-    public peekWhile(pred: (item: string) => boolean) {
-        return this.src.peekWhile(pred);
-    }
-
-    public peekWhileN(pred: (item: string) => boolean, n: number) {
-        return this.src.peekWhileN(pred, n);
-    }
-
-    public consumeIf(pred: (item: string) => boolean) {
-        return this.src.consumeIf(pred);
-    }
-
-    public consumeIfThen(
-        pred: (item: string) => boolean,
-        cb: (s: Stream<string>) => void,
-    ) {
-        return this.src.consumeIfThen(pred, cb);
-    }
-
-    public expect(pred: (item: string) => boolean, msg?: string) {
-        return this.src.expect(pred, msg);
-    }
-
-    public expectN(pred: (item: string[]) => boolean, n: number, msg?: string) {
-        return this.src.expectN(pred, n, msg);
-    }
-
-    public mark() {
-        return this.src.mark();
-    }
-
-    public unmark(mark: number) {
-        return this.src.unmark(mark);
-    }
-
-    public restore(mark: number) {
-        return this.src.restore(mark);
-    }
-
+export class Lexer extends PositionalStream {
     static lex(src: string): Result<Stream<Token>, LexerError> {
         const toks: Token[] = [];
         const l = new Lexer(src);
 
-        while (!l.src.is_done) {
+        l.skipWhitespace();
+
+        while (!l.is_done) {
             const next_tok = l.readNextToken();
-            toks.push(next_tok.val());
+
+            if (next_tok.is_err()) {
+                const err = next_tok.err();
+                toks.push(
+                    TokenError({
+                        msg: err.message,
+                        kind: err.kind,
+                        pos: err.pos,
+                    }),
+                );
+            } else {
+                toks.push(next_tok.val());
+            }
+
             l.skipWhitespace();
         }
 
@@ -123,14 +63,16 @@ export class Lexer {
     }
 
     public skipWhitespace() {
-        this.src.readWhile(isWhitespace);
+        this.readWhile(isWhitespace);
+    }
+
+    public skipWhitespaceOnLine() {
+        this.readWhile((ch) => ch !== "\n" && isWhitespace(ch));
     }
 
     private readNextToken(): Result<Token, LexerError> {
-        this.skipWhitespace();
-
-        const [c0, c1, c2, c3] = this.src.peekN(4);
-        const meta: TokenMetadata = { pos: this.src.position };
+        const [c0, c1] = this.peekN(2);
+        const meta: TokenMetadata = { pos: this.position };
 
         switch (c0) {
             case "(":
@@ -139,9 +81,27 @@ export class Lexer {
                 this.next();
                 const type = getParenKind(c0);
                 if (type.is_err())
-                    return type.map_err((x) => new LexerError(x.message));
+                    return type.map_err((x) =>
+                        toLexerError(
+                            x,
+                            LexerErrorKind.UnexpectedSyntax,
+                            meta.pos,
+                        ),
+                    );
 
                 return Ok(TokenLParen(type.val(), meta));
+            }
+
+            case ";": {
+                this.next();
+                this.skipWhitespaceOnLine();
+
+                return Ok(
+                    TokenLineComment(
+                        this.readWhile((ch) => ch !== "\n").join(""),
+                        meta,
+                    ),
+                );
             }
 
             case ")":
@@ -150,7 +110,13 @@ export class Lexer {
                 this.next();
                 const type = getParenKind(c0);
                 if (type.is_err())
-                    return type.map_err((x) => new LexerError(x.message));
+                    return type.map_err((x) =>
+                        toLexerError(
+                            x,
+                            LexerErrorKind.UnexpectedSyntax,
+                            meta.pos,
+                        ),
+                    );
 
                 return Ok(TokenRParen(type.val(), meta));
             }
@@ -165,20 +131,15 @@ export class Lexer {
 
             case ",":
                 this.next();
-                return Ok(TokenUnquote(meta));
 
-            case "@":
-                if (c1 === ",") {
-                    this.nextN(2);
+                if (c1 === "@") {
+                    this.next();
                     return Ok(TokenUnquoteSplicing(meta));
                 }
 
-            case ".": {
-                if (c1 === "." && c2 === "." && isSequenceDelimiter(c3)) {
-                    this.nextN(3);
-                    return Ok(TokenEllipsis(meta));
-                }
+                return Ok(TokenUnquote(meta));
 
+            case ".": {
                 if (isSequenceDelimiter(c1)) {
                     this.next();
                     return Ok(TokenDot(meta));
@@ -188,9 +149,8 @@ export class Lexer {
             }
 
             case '"':
-                return Ok(readStringTok(this));
+                return readStringTok(this);
 
-            // TODO: General dispatch token, move this to Reader.
             case "#": {
                 switch (c1) {
                     case '"':
@@ -198,13 +158,47 @@ export class Lexer {
 
                     case "t":
                     case "T":
-                        this.next();
-                        return Ok(TokenBool(false, meta));
+                        this.nextN(2);
+                        return Ok(TokenBool(true, meta));
 
                     case "f":
                     case "F":
-                        this.next();
+                        this.nextN(2);
                         return Ok(TokenBool(false, meta));
+
+                    case "!":
+                        this.nextN(2);
+                        return Ok(
+                            TokenShebang(
+                                this.readWhile((ch) => ch !== "\n").join(""),
+                                meta,
+                            ),
+                        );
+
+                    case ":":
+                        this.nextN(2);
+                        const keyword = readSequence(this);
+                        if (keyword.is_err()) return keyword;
+
+                        const keyword_str = keyword.unwrap();
+                        if (keyword_str.length === 0)
+                            return unexpectedSyntax(
+                                `invalid keyword; expected a valid symbol following #:`,
+                            );
+
+                        return Ok(TokenKeyword(keyword_str, meta));
+
+                    case ";":
+                        this.nextN(2);
+                        return Ok(TokenDatumComment(meta));
+
+                    case "(":
+                        this.nextN(2);
+                        return Ok(TokenVectorStart(meta));
+
+                    default:
+                        this.nextN(2);
+                        return unexpectedSyntax(`bad syntax: #${c1}`, meta.pos);
                 }
             }
 

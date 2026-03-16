@@ -7,7 +7,7 @@ export class Result<T = unknown, E = unknown> implements Iterable<
         public readonly ok: boolean,
         private readonly _val?: T,
         private readonly _err?: E,
-    ) { }
+    ) {}
 
     static Ok<T>(val: T): Result<T, never> {
         return new Result(true, val);

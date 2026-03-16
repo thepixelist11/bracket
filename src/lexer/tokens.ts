@@ -28,7 +28,7 @@
  *                        Literal: <string>
  *
  *                        Sequence tokens represent a sequence of characters
- *                        delimited by the following:
+ *                        delimited by the following, not beginning with '#':
  *
  *                        ( ) [ ] { } " ' , ` ;
  *                        Whitespace,
@@ -100,7 +100,7 @@
  *                        stops upon reaching this token.
  *
  * Error -------------- Error token
- *                        Literal: <{type: ErrorKind, msg: string}> - See shared/errors.ts for ErrorKind
+ *                        Literal: <{type: LexerErrorKind, msg: string}>
  *
  *                        Error tokens mark an error in parsing, lexing, or
  *                        evaluation. Upon receiving this token, the error
@@ -122,9 +122,6 @@
  * Dot ---------------- Dot token - '.'
  *                        Literal: <none>
  *
- * Ellipsis ----------- Ellipsis token - '...'
- *                        Literal: <none>
- *
  * Keyword ------------ Keyword token - '#:'
  *                        Literal: <string>
  *
@@ -134,26 +131,26 @@
  * DatumComment ------- Datum Comment token - '#;'
  *                        Literal: <none>
  *
- * BlockCommentStart -- Block Comment Start token - '#|'
- *                        Literal: <none>
- *
- * BlockCommentEnd ---- Block Comment End token - '|#'
- *                        Literal: <none>
- *
  * Shebang ------------ Shebang token - '#!'
  *                        Literal: <string>
  *
- * RadixPrefix -------- Radix Prefix token - '#[b|o|x|d]'
- *                        Literal: <number>
+ * Line Comment ------- Line Comment token - ';'
+ *                        Literal: <string>
+ *
+ *                        Line comment tokens contain the contents of the line
+ *                        which may be used in parsing for generating inline
+ *                        documentation, source reconstruction, etc., but are
+ *                        stripped at runtime.
  */
 
-import { ErrorKind } from "../shared/errors.js";
-import { Position } from "../shared/data-structures/stream.js";
 import { Err, Ok, Result } from "../shared/data-structures/result.js";
+import { Position } from "../shared/util/types.js";
+import { LexerErrorKind } from "./lexer-errors.js";
 
 interface ErrorTokenLiteral {
     msg: string;
-    kind: ErrorKind;
+    kind: LexerErrorKind;
+    pos?: Position;
 }
 
 export enum ParenKind {
@@ -198,14 +195,11 @@ export enum TokenKind {
     LParen,
     RParen,
     Dot,
-    Ellipsis,
     Keyword,
     VectorStart,
     DatumComment,
-    BlockCommentStart,
-    BlockCommentEnd,
     Shebang,
-    RadixPrefix,
+    LineComment,
 }
 
 // prettier-ignore
@@ -224,14 +218,11 @@ type TokenKindLiteralMap<T extends TokenKind> =
     : T extends TokenKind.LParen ? ParenKind
     : T extends TokenKind.RParen ? ParenKind
     : T extends TokenKind.Dot ? undefined
-    : T extends TokenKind.Ellipsis ? undefined
     : T extends TokenKind.Keyword ? string
     : T extends TokenKind.VectorStart ? undefined
     : T extends TokenKind.DatumComment ? undefined
-    : T extends TokenKind.BlockCommentStart ? undefined
-    : T extends TokenKind.BlockCommentEnd ? undefined
     : T extends TokenKind.Shebang ? string
-    : T extends TokenKind.RadixPrefix ? number
+    : T extends TokenKind.LineComment ? string
     : never;
 
 export type TokenMetadata = Partial<{
@@ -258,12 +249,20 @@ export class Token<T extends TokenKind = TokenKind> {
     public toString() {
         switch (this.kind) {
             case TokenKind.Error: {
+                const pos = (this.literal as ErrorTokenLiteral).pos;
+                const kind = (this.literal as ErrorTokenLiteral).kind;
+
                 const kind_str =
-                    (this.literal as ErrorTokenLiteral).kind ??
-                    "<generic_error>";
+                    kind === LexerErrorKind.General
+                        ? `<${LexerErrorKind[kind]}>`
+                        : "<error>";
+
                 const msg_str =
                     (this.literal as ErrorTokenLiteral).msg ?? "<empty>";
-                return `TokenError(${kind_str}:${msg_str})`;
+
+                const pos_str = pos ? ` at ${pos.row}:${pos.col}` : "";
+
+                return `TokenError(${kind_str}:${msg_str}${pos_str})`;
             }
 
             case TokenKind.LParen:
@@ -338,10 +337,6 @@ export function TokenDot(meta?: TokenMetadata) {
     return new Token(TokenKind.Dot, undefined, meta);
 }
 
-export function TokenEllipsis(meta?: TokenMetadata) {
-    return new Token(TokenKind.Ellipsis, undefined, meta);
-}
-
 export function TokenKeyword(keyword: string, meta?: TokenMetadata) {
     return new Token(TokenKind.Keyword, keyword, meta);
 }
@@ -354,20 +349,12 @@ export function TokenDatumComment(meta?: TokenMetadata) {
     return new Token(TokenKind.DatumComment, undefined, meta);
 }
 
-export function TokenBlockCommentStart(meta?: TokenMetadata) {
-    return new Token(TokenKind.BlockCommentStart, undefined, meta);
-}
-
-export function TokenBlockCommentEnd(meta?: TokenMetadata) {
-    return new Token(TokenKind.BlockCommentEnd, undefined, meta);
-}
-
 export function TokenShebang(shebang: string, meta?: TokenMetadata) {
     return new Token(TokenKind.Shebang, shebang, meta);
 }
 
-export function TokenRadixPrefix(radix: number, meta?: TokenMetadata) {
-    return new Token(TokenKind.RadixPrefix, radix, meta);
+export function TokenLineComment(line: string, meta?: TokenMetadata) {
+    return new Token(TokenKind.LineComment, line, meta);
 }
 
 /*        Token Factory Exhaustiveness Checking       */
