@@ -15,16 +15,16 @@
  * The following is a list of all TokenKinds in Bracket, their `literal` types,
  * as well as any additional implementation or usage details.
  *
- * Str ---------------- String literal tokens
+ * Str ---------------- String literal token
  *                        Literal: <string>
  *
- * ByteStr ------------ Byte String literal tokens
+ * ByteStr ------------ Byte String literal token
  *                        Literal: <string>
  *
  *                        Note that ByteStr tokens will be normalized to a
  *                        `bytes` form in the reader phase.
  *
- * Seq ---------------- Delimited Sequence Token
+ * Seq ---------------- Delimited Sequence token
  *                        Literal: <string>
  *
  *                        Sequence tokens represent a sequence of characters
@@ -202,159 +202,279 @@ export enum TokenKind {
     LineComment,
 }
 
-// prettier-ignore
-type TokenKindLiteralMap<T extends TokenKind> =
-    T extends TokenKind.Str ? string
-    : T extends TokenKind.ByteStr ? string
-    : T extends TokenKind.Seq ? string
-    : T extends TokenKind.Quote ? undefined
-    : T extends TokenKind.Quasiquote ? undefined
-    : T extends TokenKind.Unquote ? undefined
-    : T extends TokenKind.UnquoteSplicing ? undefined
-    : T extends TokenKind.Bool ? boolean
-    : T extends TokenKind.Char ? string
-    : T extends TokenKind.EOF ? undefined
-    : T extends TokenKind.Error ? ErrorTokenLiteral
-    : T extends TokenKind.LParen ? ParenKind
-    : T extends TokenKind.RParen ? ParenKind
-    : T extends TokenKind.Dot ? undefined
-    : T extends TokenKind.Keyword ? string
-    : T extends TokenKind.VectorStart ? undefined
-    : T extends TokenKind.DatumComment ? undefined
-    : T extends TokenKind.Shebang ? string
-    : T extends TokenKind.LineComment ? string
-    : never;
-
 export type TokenMetadata = Partial<{
     pos: Position;
 }> & { [key: string]: unknown };
 
-export class Token<T extends TokenKind = TokenKind> {
-    constructor(
-        private readonly _kind: T,
-        private readonly _literal: TokenKindLiteralMap<T>,
-        private readonly _meta: Readonly<TokenMetadata> = {},
-    ) {}
+export interface TokenBase {
+    kind: TokenKind;
+    meta?: Readonly<TokenMetadata>;
+}
 
-    get kind() {
-        return this._kind;
-    }
-    get literal() {
-        return this._literal;
-    }
-    get meta() {
-        return this._meta;
-    }
+export interface TokenStr extends TokenBase {
+    kind: TokenKind.Str;
+    literal: string;
+}
 
-    public toString() {
-        switch (this.kind) {
-            case TokenKind.Error: {
-                const pos = (this.literal as ErrorTokenLiteral).pos;
-                const kind = (this.literal as ErrorTokenLiteral).kind;
+export interface TokenByteStr extends TokenBase {
+    kind: TokenKind.ByteStr;
+    literal: string;
+}
 
-                const kind_str =
-                    kind === LexerErrorKind.General
-                        ? `<${LexerErrorKind[kind]}>`
-                        : "<error>";
+export interface TokenSeq extends TokenBase {
+    kind: TokenKind.Seq;
+    literal: string;
+}
 
-                const msg_str =
-                    (this.literal as ErrorTokenLiteral).msg ?? "<empty>";
+export interface TokenQuote extends TokenBase {
+    kind: TokenKind.Quote;
+}
 
-                const pos_str = pos ? ` at ${pos.row}:${pos.col}` : "";
+export interface TokenQuasiquote extends TokenBase {
+    kind: TokenKind.Quasiquote;
+}
 
-                return `TokenError(${kind_str}:${msg_str}${pos_str})`;
-            }
+export interface TokenUnquote extends TokenBase {
+    kind: TokenKind.Unquote;
+}
 
-            case TokenKind.LParen:
-            case TokenKind.RParen: {
-                const kind_str = TokenKind[this.kind];
-                const lit_str = ParenKind[this.literal as ParenKind] ?? "";
-                return `Token${kind_str}(${lit_str})`;
-            }
+export interface TokenUnquoteSplicing extends TokenBase {
+    kind: TokenKind.UnquoteSplicing;
+}
 
-            default: {
-                const kind_str = TokenKind[this.kind];
-                const lit_str = this.literal ?? "";
-                return `Token${kind_str}(${lit_str})`;
-            }
+export interface TokenBool extends TokenBase {
+    kind: TokenKind.Bool;
+    literal: boolean;
+}
+
+export interface TokenChar extends TokenBase {
+    kind: TokenKind.Char;
+    literal: string;
+}
+
+export interface TokenEOF extends TokenBase {
+    kind: TokenKind.EOF;
+}
+
+export interface TokenError extends TokenBase {
+    kind: TokenKind.Error;
+    literal: ErrorTokenLiteral;
+}
+
+export interface TokenLParen extends TokenBase {
+    kind: TokenKind.LParen;
+    literal: ParenKind;
+}
+
+export interface TokenRParen extends TokenBase {
+    kind: TokenKind.RParen;
+    literal: ParenKind;
+}
+
+export interface TokenDot extends TokenBase {
+    kind: TokenKind.Dot;
+}
+
+export interface TokenKeyword extends TokenBase {
+    kind: TokenKind.Keyword;
+    literal: string;
+}
+
+export interface TokenVectorStart extends TokenBase {
+    kind: TokenKind.VectorStart;
+}
+
+export interface TokenDatumComment extends TokenBase {
+    kind: TokenKind.DatumComment;
+}
+
+export interface TokenShebang extends TokenBase {
+    kind: TokenKind.Shebang;
+    literal: string;
+}
+
+export interface TokenLineComment extends TokenBase {
+    kind: TokenKind.LineComment;
+    literal: string;
+}
+
+export type Token =
+    | TokenStr
+    | TokenByteStr
+    | TokenSeq
+    | TokenQuote
+    | TokenQuasiquote
+    | TokenUnquote
+    | TokenUnquoteSplicing
+    | TokenBool
+    | TokenChar
+    | TokenEOF
+    | TokenError
+    | TokenLParen
+    | TokenRParen
+    | TokenDot
+    | TokenKeyword
+    | TokenVectorStart
+    | TokenDatumComment
+    | TokenShebang
+    | TokenLineComment;
+
+export function tokenToString(token: Token): string {
+    switch (token.kind) {
+        case TokenKind.Error: {
+            const { msg, kind, pos } = token.literal;
+
+            const kindStr =
+                kind === LexerErrorKind.General
+                    ? `<${LexerErrorKind[kind]}>`
+                    : "<error>";
+
+            const pos_str = pos ? ` at ${pos.row}:${pos.col}` : "";
+
+            return `TokenError(${kindStr}:${msg}${pos_str})`;
+        }
+
+        case TokenKind.LParen:
+        case TokenKind.RParen: {
+            const kind_str = TokenKind[token.kind];
+            const lit_str = ParenKind[token.literal] ?? "";
+            return `Token${kind_str}(${lit_str})`;
+        }
+
+        case TokenKind.Str:
+        case TokenKind.ByteStr:
+        case TokenKind.Seq:
+        case TokenKind.Bool:
+        case TokenKind.Char:
+        case TokenKind.Keyword:
+        case TokenKind.Shebang:
+        case TokenKind.LineComment: {
+            const kind_str = TokenKind[token.kind];
+            return `Token${kind_str}(${token.literal})`;
+        }
+
+        default: {
+            const kind_str = TokenKind[token.kind];
+            return `Token${kind_str}`;
         }
     }
 }
 
-export function TokenStr(literal: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.Str, literal, meta);
+export function TokenStr(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenStr> {
+    return { kind: TokenKind.Str, literal, meta } as const;
 }
 
-export function TokenByteStr(literal: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.ByteStr, literal, meta);
+export function TokenByteStr(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenByteStr> {
+    return { kind: TokenKind.ByteStr, literal, meta } as const;
 }
 
-export function TokenSeq(literal: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.Seq, literal, meta);
+export function TokenSeq(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenSeq> {
+    return { kind: TokenKind.Seq, literal, meta } as const;
 }
 
-export function TokenQuote(meta?: TokenMetadata) {
-    return new Token(TokenKind.Quote, undefined, meta);
+export function TokenQuote(meta?: TokenMetadata): Readonly<TokenQuote> {
+    return { kind: TokenKind.Quote, meta } as const;
 }
 
-export function TokenQuasiquote(meta?: TokenMetadata) {
-    return new Token(TokenKind.Quasiquote, undefined, meta);
+export function TokenQuasiquote(
+    meta?: TokenMetadata,
+): Readonly<TokenQuasiquote> {
+    return { kind: TokenKind.Quasiquote, meta } as const;
 }
 
-export function TokenUnquote(meta?: TokenMetadata) {
-    return new Token(TokenKind.Unquote, undefined, meta);
+export function TokenUnquote(meta?: TokenMetadata): Readonly<TokenUnquote> {
+    return { kind: TokenKind.Unquote, meta } as const;
 }
 
-export function TokenUnquoteSplicing(meta?: TokenMetadata) {
-    return new Token(TokenKind.UnquoteSplicing, undefined, meta);
+export function TokenUnquoteSplicing(
+    meta?: TokenMetadata,
+): Readonly<TokenUnquoteSplicing> {
+    return { kind: TokenKind.UnquoteSplicing, meta } as const;
 }
 
-export function TokenBool(literal: boolean, meta?: TokenMetadata) {
-    return new Token(TokenKind.Bool, literal, meta);
+export function TokenBool(
+    literal: boolean,
+    meta?: TokenMetadata,
+): Readonly<TokenBool> {
+    return { kind: TokenKind.Bool, literal, meta } as const;
 }
 
-export function TokenChar(literal: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.Char, literal, meta);
+export function TokenChar(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenChar> {
+    return { kind: TokenKind.Char, literal, meta } as const;
 }
 
-export function TokenEOF(meta?: TokenMetadata) {
-    return new Token(TokenKind.EOF, undefined, meta);
+export function TokenEOF(meta?: TokenMetadata): Readonly<TokenEOF> {
+    return { kind: TokenKind.EOF, meta } as const;
 }
 
-export function TokenError(literal: ErrorTokenLiteral, meta?: TokenMetadata) {
-    return new Token(TokenKind.Error, literal, meta);
+export function TokenError(
+    literal: ErrorTokenLiteral,
+    meta?: TokenMetadata,
+): Readonly<TokenError> {
+    return { kind: TokenKind.Error, literal, meta } as const;
 }
 
-export function TokenLParen(kind: ParenKind, meta?: TokenMetadata) {
-    return new Token(TokenKind.LParen, kind, meta);
+export function TokenLParen(
+    literal: ParenKind,
+    meta?: TokenMetadata,
+): Readonly<TokenLParen> {
+    return { kind: TokenKind.LParen, literal, meta } as const;
 }
 
-export function TokenRParen(kind: ParenKind, meta?: TokenMetadata) {
-    return new Token(TokenKind.RParen, kind, meta);
+export function TokenRParen(
+    literal: ParenKind,
+    meta?: TokenMetadata,
+): Readonly<TokenRParen> {
+    return { kind: TokenKind.RParen, literal, meta } as const;
 }
 
-export function TokenDot(meta?: TokenMetadata) {
-    return new Token(TokenKind.Dot, undefined, meta);
+export function TokenDot(meta?: TokenMetadata): Readonly<TokenDot> {
+    return { kind: TokenKind.Dot, meta } as const;
 }
 
-export function TokenKeyword(keyword: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.Keyword, keyword, meta);
+export function TokenKeyword(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenKeyword> {
+    return { kind: TokenKind.Keyword, literal, meta } as const;
 }
 
-export function TokenVectorStart(meta?: TokenMetadata) {
-    return new Token(TokenKind.VectorStart, undefined, meta);
+export function TokenVectorStart(
+    meta?: TokenMetadata,
+): Readonly<TokenVectorStart> {
+    return { kind: TokenKind.VectorStart, meta } as const;
 }
 
-export function TokenDatumComment(meta?: TokenMetadata) {
-    return new Token(TokenKind.DatumComment, undefined, meta);
+export function TokenDatumComment(
+    meta?: TokenMetadata,
+): Readonly<TokenDatumComment> {
+    return { kind: TokenKind.DatumComment, meta } as const;
 }
 
-export function TokenShebang(shebang: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.Shebang, shebang, meta);
+export function TokenShebang(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenShebang> {
+    return { kind: TokenKind.Shebang, literal, meta } as const;
 }
 
-export function TokenLineComment(line: string, meta?: TokenMetadata) {
-    return new Token(TokenKind.LineComment, line, meta);
+export function TokenLineComment(
+    literal: string,
+    meta?: TokenMetadata,
+): Readonly<TokenLineComment> {
+    return { kind: TokenKind.LineComment, literal, meta } as const;
 }
 
 /*        Token Factory Exhaustiveness Checking       */

@@ -32,6 +32,10 @@ import {
 } from "./lexer-errors.js";
 
 export class Lexer extends PositionalStream {
+    private constructor(src: string) {
+        super(src);
+    }
+
     static lex(src: string): Result<Stream<Token>, LexerError> {
         const toks: Token[] = [];
         const l = new Lexer(src);
