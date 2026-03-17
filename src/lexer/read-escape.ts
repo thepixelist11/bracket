@@ -176,6 +176,12 @@ export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
 
         l.nextN(6);
 
+        if (code > 0x10ffff)
+            return unexpectedSyntax(
+                `unicode out of range; computed scalar is ${code}, max unicode scalar is ${0x10ffff}`,
+                pos,
+            );
+
         result = String.fromCodePoint(code);
     } else {
         result = String.fromCodePoint(unicode);
@@ -210,6 +216,12 @@ export function readUnicodeEscape8(l: Lexer): Result<string, LexerError> {
             pos,
         );
     }
+
+    if (unicode > 0x10ffff)
+        return unexpectedSyntax(
+            `unicode out of range; computed scalar is ${unicode}, max unicode scalar is ${0x10ffff}`,
+            pos,
+        );
 
     const ch = String.fromCodePoint(unicode);
     return Ok(convertSeqToString(ch));
@@ -248,19 +260,20 @@ export function readEscape(l: Lexer): Result<string, LexerError> {
     } else {
         // prettier-ignore
         switch (ch) {
-            case "a": l.next(); ch = "\a";
-            case "b": l.next(); ch = "\b";
-            case "t": l.next(); ch = "\t";
-            case "n": l.next(); ch = "\n";
-            case "v": l.next(); ch = "\v";
-            case "f": l.next(); ch = "\f";
-            case "r": l.next(); ch = "\r";
-            case "e": l.next(); ch = "\e";
-            case '"': l.next(); ch = '"';
-            case "'": l.next(); ch = "'";
-            case "\\": l.next(); ch = "\\";
+            case "a": l.next(); ch = "\a"; break;
+            case "b": l.next(); ch = "\b"; break;
+            case "t": l.next(); ch = "\t"; break;
+            case "n": l.next(); ch = "\n"; break;
+            case "v": l.next(); ch = "\v"; break;
+            case "f": l.next(); ch = "\f"; break;
+            case "r": l.next(); ch = "\r"; break;
+            case "e": l.next(); ch = "\e"; break;
+            case '"': l.next(); ch = '"'; break;
+            case "'": l.next(); ch = "'"; break;
+            case "\\": l.next(); ch = "\\"; break;
+            default: ch = ""; break;
         }
     }
 
-    return Ok("");
+    return Ok(ch);
 }
