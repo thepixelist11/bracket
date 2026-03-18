@@ -1,5 +1,5 @@
 import { Ok, Result } from "../shared/data-structures/result.js";
-import { isByteChar } from "../shared/util/strings.js";
+import { isByteChar, convertSeqToString } from "../shared/util/strings.js";
 import {
     LexerErrorKind,
     LexerError,
@@ -25,6 +25,7 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
         );
 
     let literal = "";
+    let err: null | Result<never, LexerError> = null;
 
     read_loop: while (!l.is_done) {
         let ch = l.peek();
@@ -35,9 +36,13 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
 
             case "\\":
                 const esc = readEscape(l);
-                if (esc.is_err()) return esc;
-                ch = esc.val();
-                // FIXME: does not return literal escape sequence, must fix single byte check.
+
+                if (esc.is_err()) {
+                    err ??= esc;
+                } else {
+                    ch = esc.val();
+                }
+
                 break;
 
             default:
@@ -45,14 +50,15 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
                 break;
         }
 
-        if (!isByteChar(ch))
-            return generalLexerError(
+        if (!isByteChar(ch)) {
+            err ??= generalLexerError(
                 `read byte string failed; char '${ch}' (${ch.charCodeAt(0)}) ` +
                     `is out of range of byte string [0, 255]`,
                 pos,
             );
-
-        literal += ch;
+        } else {
+            literal += ch;
+        }
     }
 
     res = l.expect(
@@ -64,6 +70,8 @@ export function readByteStringTok(l: Lexer): Result<Token, LexerError> {
         return res.map_err((x) =>
             toLexerError(x, LexerErrorKind.MissingClosing, pos),
         );
+
+    if (err) return err;
 
     return Ok(TokenByteStr(literal, { pos }));
 }

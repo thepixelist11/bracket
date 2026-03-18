@@ -4,9 +4,7 @@ import { readEscape } from "./read-escape.js";
 import { Result, Ok } from "../shared/data-structures/result.js";
 import { LexerError, LexerErrorKind, toLexerError } from "./lexer-errors.js";
 
-export function readStringTok(
-    l: Lexer,
-): Result<Token<TokenKind.Str>, LexerError> {
+export function readStringTok(l: Lexer): Result<Token, LexerError> {
     const pos = l.position;
 
     let res = l.expect(

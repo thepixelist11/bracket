@@ -70,7 +70,7 @@ export function readOctalEscape(l: Lexer): Result<string, LexerError> {
     }
 
     const ch = String.fromCharCode(octal);
-    return Ok(convertSeqToString(ch));
+    return Ok(ch);
 }
 
 export function readHexEscape(l: Lexer): Result<string, LexerError> {
@@ -101,7 +101,7 @@ export function readHexEscape(l: Lexer): Result<string, LexerError> {
     }
 
     const ch = String.fromCharCode(hex);
-    return Ok(convertSeqToString(ch));
+    return Ok(ch);
 }
 
 export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
@@ -187,7 +187,7 @@ export function readUnicodeEscape4(l: Lexer): Result<string, LexerError> {
         result = String.fromCodePoint(unicode);
     }
 
-    return Ok(convertSeqToString(result));
+    return Ok(result);
 }
 
 export function readUnicodeEscape8(l: Lexer): Result<string, LexerError> {
@@ -224,7 +224,7 @@ export function readUnicodeEscape8(l: Lexer): Result<string, LexerError> {
         );
 
     const ch = String.fromCodePoint(unicode);
-    return Ok(convertSeqToString(ch));
+    return Ok(ch);
 }
 
 export function readEscape(l: Lexer): Result<string, LexerError> {

@@ -1,6 +1,37 @@
 import { eq } from "../../shared/util/objects.js";
 import fs from "fs";
 
+function parseHistoryFile(
+    file_path: string,
+    size: number,
+    filter_lines: (line: string) => boolean = () => true,
+) {
+    if (
+        file_path === "" ||
+        !fs.existsSync(file_path) ||
+        !fs.statSync(file_path).isFile()
+    ) {
+        return null;
+    }
+
+    const raw = fs.readFileSync(file_path, "utf8").split("\n");
+
+    const entries: string[][] = [];
+
+    let i = 0;
+    while (i < raw.length) {
+        const count = parseInt(raw[i++], 10);
+        if (Number.isNaN(count) || count <= 0) break;
+
+        const cmd = raw.slice(i, i + count);
+        i += count;
+
+        if (filter_lines(cmd.join("\n"))) entries.push(cmd);
+    }
+
+    return entries.reverse().slice(0, size);
+}
+
 export class TerminalHistory {
     private hist: string[][] = [];
     private temp_hist_buffers = new Map<number, string[]>();
@@ -10,37 +41,16 @@ export class TerminalHistory {
     public loadFile(
         file_path: string,
         size: number,
-        filter_lines: (line: string) => boolean = () => true,
+        filter_lines?: (line: string) => boolean,
     ): boolean {
-        if (
-            file_path === "" ||
-            !fs.existsSync(file_path) ||
-            !fs.statSync(file_path).isFile()
-        ) {
-            return false;
-        }
+        const parsed = parseHistoryFile(file_path, size, filter_lines);
 
-        const raw = fs.readFileSync(file_path, "utf8").split("\n");
+        if (!parsed) return false;
 
-        const entries: string[][] = [];
-
-        let i = 0;
-        while (i < raw.length) {
-            const count = parseInt(raw[i++], 10);
-            if (Number.isNaN(count) || count <= 0) break;
-
-            const cmd = raw.slice(i, i + count);
-            i += count;
-
-            if (filter_lines(cmd.join("\n"))) entries.push(cmd);
-        }
-
-        this.hist = entries.reverse().slice(0, size);
-
+        this.hist = parsed;
         return true;
     }
 
-    // FIXME: Repeats on subsequent runs duplicate history
     public append(current_buffer: readonly string[]): void {
         if (current_buffer.length === 0) return;
         if (eq(this.hist[0], current_buffer)) return;
@@ -50,7 +60,9 @@ export class TerminalHistory {
     }
 
     public appendFile(file_path: string, buffer: readonly string[]): boolean {
-        if (file_path === "" || buffer.length === 0) {
+        const parsed = parseHistoryFile(file_path, 1);
+
+        if (buffer.length === 0 || !parsed || eq(parsed[0], buffer)) {
             return false;
         }
 
